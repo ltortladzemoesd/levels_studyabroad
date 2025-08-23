@@ -2,167 +2,189 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levels Academy – University Map (Clean, with Country Labels)</title>
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Levels Academy – Europe Cards</title>
 <style>
-  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#fff; }
-  #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
-  header {
-    padding:10px 14px; background:#2B445B; color:#fff;
-    display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:center;
+  :root{
+    --bg:#f6f7f8; --ink:#1b2730; --muted:#6b7a86; --chip:#23B899;
+    --t1:#23B899; --t2:#FDE200; --t3:#F66E6E; --brand:#2B445B;
+    --card:#ffffff; --shadow:0 12px 24px rgba(0,0,0,.08);
   }
-  header h1{ margin:0; font-size:16px; font-weight:600; }
-  .control{ display:inline-flex; gap:8px; align-items:center; }
-  .control label{ font-size:13px; opacity:.9 }
-  .control select, .control input{
-    border:none; padding:6px 8px; border-radius:8px; outline:none; background:#eef2f4;
+  *{box-sizing:border-box} html,body{height:100%;margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,Arial}
+  .app{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;height:100%;padding:18px}
+  header{grid-column:1 / -1;background:var(--brand);color:#fff;border-radius:14px;padding:12px 16px;font-weight:700}
+  .board{
+    position:relative;background:var(--card);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;
   }
-  #map{ width:100%; height:100%; }
-
-  /* Subtle, clean look for the basemap */
-  .leaflet-tile {
-    filter: grayscale(100%) contrast(95%) brightness(104%);
+  .hint{position:absolute;top:10px;left:12px;color:var(--muted);font-size:13px}
+  .country-card{
+    position:absolute;min-width:110px;min-height:70px;background:#fff;border:1px solid #e8eef2;border-radius:16px;
+    box-shadow:0 10px 18px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;
+    padding:12px;text-align:center;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;
   }
-
-  /* Legend */
-  .legend {
-    position:absolute; bottom:12px; left:12px; background:white; padding:10px 12px;
-    border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.08); font-size:13px;
-  }
-  .legend .row{ display:flex; align-items:center; gap:8px; margin:6px 0; }
-  .dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
-  .dot.t1{ background:#23B899 } /* 1–50 */
-  .dot.t2{ background:#FDE200 } /* 51–200 */
-  .dot.t3{ background:#F66E6E } /* 201+ */
-
-  .leaflet-control-zoom{ box-shadow:none !important; }
-  .leaflet-popup-content{ font-size:14px; }
-  .muted{ color:#667; font-size:13px; }
+  .country-card:hover{transform:translateY(-2px);box-shadow:0 14px 26px rgba(0,0,0,.10)}
+  .country-card .name{color:var(--ink);font-weight:700}
+  .country-card .count{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  /* Approximate positions on a “map-like” canvas */
+  .UK{left:8%; top:36%}
+  .IE{left:3%; top:42%}
+  .FR{left:18%; top:48%}
+  .ES{left:14%; top:66%}
+  .PT{left:8%; top:68%}
+  .NL{left:29%; top:38%}
+  .BE{left:26%; top:44%}
+  .DE{left:36%; top:40%}
+  .CH{left:36%; top:54%}
+  .AT{left:42%; top:52%}
+  .IT{left:43%; top:66%}
+  .SE{left:45%; top:24%}
+  .NO{left:40%; top:14%}
+  .DK{left:38%; top:28%}
+  .FI{left:53%; top:16%}
+  .PL{left:48%; top:40%}
+  .CZ{left:46%; top:48%}
+  .SK{left:49%; top:51%}
+  .HU{left:52%; top:54%}
+  .RO{left:58%; top:56%}
+  .BG{left:60%; top:64%}
+  .GR{left:58%; top:74%}
+  /* Right panel */
+  .panel{background:var(--card);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+  .panel-head{padding:14px 16px;border-bottom:1px solid #eef2f5;display:flex;gap:10px;align-items:center}
+  .badge{background:#eef6f4;color:#0f2a22;border-radius:999px;padding:4px 10px;font-size:12px}
+  .panel-title{font-weight:800}
+  .list{padding:10px 12px;overflow:auto}
+  .uni{padding:10px 12px;border:1px solid #eef2f5;border-radius:14px;margin:8px 0;display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center}
+  .rank{font-weight:800;color:#fff;border-radius:10px;padding:4px 8px;min-width:52px;text-align:center}
+  .rank.t1{background:var(--t1)} .rank.t2{background:var(--t2);color:#1b1b1b} .rank.t3{background:var(--t3)}
+  .uni-name{font-weight:700;color:var(--ink)} .meta{font-size:12px;color:var(--muted)}
+  /* Responsive */
+  @media (max-width: 900px){ .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto} .board{height:56vh} }
 </style>
 </head>
 <body>
-<div id="app">
-  <header>
-    <h1>QS Europe 2025 • Top Universities</h1>
+  <header>QS Europe 2025 • Explore by Country (Levels Academy)</header>
 
-    <div class="control">
-      <label for="country">Country</label>
-      <select id="country"><option value="ALL">All</option></select>
+  <div class="app">
+    <!-- Left: Europe cards board -->
+    <div class="board" id="board" aria-label="Europe board">
+      <div class="hint">Tap a country</div>
+      <!-- Cards generated by JS -->
     </div>
 
-    <div class="control">
-      <label for="tier">Rank</label>
-      <select id="tier">
-        <option value="ALL">All</option>
-        <option value="T1">1–50</option>
-        <option value="T2">51–200</option>
-        <option value="T3">201+</option>
-      </select>
-    </div>
-
-    <div class="control">
-      <label for="q">Search</label>
-      <input id="q" type="search" placeholder="University name…" />
-    </div>
-  </header>
-
-  <div id="map"></div>
-</div>
-
-<div class="legend">
-  <div><strong>Legend</strong></div>
-  <div class="row"><span class="dot t1"></span> 1–50</div>
-  <div class="row"><span class="dot t2"></span> 51–200</div>
-  <div class="row"><span class="dot t3"></span> 201+</div>
-</div>
+    <!-- Right: University list -->
+    <aside class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="panelTitle">Pick a country</div>
+        <span class="badge" id="countBadge">0 universities</span>
+      </div>
+      <div class="list" id="uniList"></div>
+    </aside>
+  </div>
 
 <script>
-// ---------- DATA (demo subset; add globalRank when available) ----------
-const universities = [
-  {euRank:1,  globalRank:7,  name:"ETH Zurich – Swiss Federal Institute of Technology", country:"Switzerland", lat:47.3769, lng:8.5417, city:"Zurich"},
-  {euRank:2,  globalRank:2,  name:"Imperial College London", country:"United Kingdom", lat:51.4988, lng:-0.1749, city:"London"},
-  {euRank:3,  globalRank:3,  name:"University of Oxford", country:"United Kingdom", lat:51.7548, lng:-1.2544, city:"Oxford"},
-  {euRank:4,  globalRank:5,  name:"University of Cambridge", country:"United Kingdom", lat:52.2043, lng:0.1149, city:"Cambridge"},
-  {euRank:5,  globalRank:9,  name:"UCL (University College London)", country:"United Kingdom", lat:51.5246, lng:-0.1340, city:"London"},
-  {euRank:9,  globalRank:24, name:"Université PSL (Paris Sciences & Lettres)", country:"France", lat:48.8470, lng:2.3459, city:"Paris"},
-  {euRank:10, globalRank:27, name:"EPFL – École polytechnique fédérale de Lausanne", country:"Switzerland", lat:46.5191, lng:6.5668, city:"Lausanne"},
-  {euRank:11, globalRank:37, name:"Technical University of Munich (TUM)", country:"Germany", lat:48.1486, lng:11.5685, city:"Munich"},
-  {euRank:13, globalRank:85, name:"Lund University", country:"Sweden", lat:55.7047, lng:13.1910, city:"Lund"},
-  {euRank:15, globalRank:49, name:"Delft University of Technology", country:"Netherlands", lat:51.9998, lng:4.3739, city:"Delft"},
-  {euRank:17, globalRank:53, name:"University of Amsterdam", country:"Netherlands", lat:52.3557, lng:4.9557, city:"Amsterdam"},
-  {euRank:18, globalRank:59, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
+/* ---- Demo data (can be replaced by real data extracted from your Excel) ---- */
+const data = [
+  // United Kingdom
+  {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
+  {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
+  {country:'United Kingdom', euRank:4,  name:'University of Cambridge'},
+  {country:'United Kingdom', euRank:5,  name:'UCL (University College London)'},
+  {country:'United Kingdom', euRank:8,  name:"King's College London"},
+  {country:'United Kingdom', euRank:12, name:'London School of Economics (LSE)'},
+  {country:'United Kingdom', euRank:6,  name:'The University of Edinburgh'},
+  {country:'United Kingdom', euRank:7,  name:'The University of Manchester'},
+  {country:'United Kingdom', euRank:14, name:'University of Bristol'},
+  {country:'United Kingdom', euRank:16, name:'University of Warwick'},
+
+  // Switzerland
+  {country:'Switzerland', euRank:1,  name:'ETH Zurich'},
+  {country:'Switzerland', euRank:10, name:'EPFL'},
+
+  // Germany
+  {country:'Germany', euRank:11, name:'Technical University of Munich (TUM)'},
+  {country:'Germany', euRank:18, name:'LMU Munich'},
+
+  // France
+  {country:'France', euRank:9,  name:'Université PSL'},
+
+  // Netherlands
+  {country:'Netherlands', euRank:15, name:'Delft University of Technology'},
+  {country:'Netherlands', euRank:17, name:'University of Amsterdam'},
+
+  // Sweden
+  {country:'Sweden', euRank:13, name:'Lund University'},
 ];
 
-// Helpers
-function tier(euRank){ if(euRank<=50) return "T1"; if(euRank<=200) return "T2"; return "T3"; }
-function color(t){ return t==="T1"?"#23B899":(t==="T2"?"#FDE200":"#F66E6E"); }
-function rankLine(u){
-  let s = `Rank #${u.euRank} in Europe`;
-  if (Number.isFinite(u.globalRank)) s += ` • Rank #${u.globalRank} Globally`;
-  return s;
+/* ---- Countries to render as cards (class name = approximate position) ---- */
+const countries = [
+  {key:'United Kingdom', code:'UK'},
+  {key:'Ireland', code:'IE'},
+  {key:'France', code:'FR'},
+  {key:'Spain', code:'ES'},
+  {key:'Portugal', code:'PT'},
+  {key:'Netherlands', code:'NL'},
+  {key:'Belgium', code:'BE'},
+  {key:'Germany', code:'DE'},
+  {key:'Switzerland', code:'CH'},
+  {key:'Austria', code:'AT'},
+  {key:'Italy', code:'IT'},
+  {key:'Sweden', code:'SE'},
+  {key:'Norway', code:'NO'},
+  {key:'Denmark', code:'DK'},
+  {key:'Finland', code:'FI'},
+  {key:'Poland', code:'PL'},
+  {key:'Czechia', code:'CZ'},
+  {key:'Slovakia', code:'SK'},
+  {key:'Hungary', code:'HU'},
+  {key:'Romania', code:'RO'},
+  {key:'Bulgaria', code:'BG'},
+  {key:'Greece', code:'GR'},
+];
+
+/* ---- Helpers ---- */
+const tier = r => r<=50 ? 't1' : (r<=200 ? 't2' : 't3');
+function universitiesByCountry(country){
+  return data.filter(d => d.country === country).sort((a,b)=>a.euRank-b.euRank);
 }
 
-// ---------- MAP (Carto Positron with labels = clean borders + country names) ----------
-const map = L.map('map', { zoomControl:true, minZoom:3, maxZoom:7, worldCopyJump:true })
-  .setView([51.2, 10.4], 5);
-
-// Carto Positron (clean, labeled). This shows country borders + names with very light roads.
-L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  { attribution: "&copy; OpenStreetMap &copy; CARTO", detectRetina: true }
-).addTo(map);
-
-// Controls
-const countryEl = document.getElementById('country');
-const tierEl = document.getElementById('tier');
-const qEl = document.getElementById('q');
-
-[...new Set(universities.map(u=>u.country))].sort().forEach(c=>{
-  const opt = document.createElement('option'); opt.value=c; opt.textContent=c; countryEl.appendChild(opt);
+/* ---- Render board ---- */
+const board = document.getElementById('board');
+countries.forEach(c=>{
+  const list = universitiesByCountry(c.key);
+  const card = document.createElement('button');
+  card.className = `country-card ${c.code}`;
+  card.innerHTML = `<div>
+      <div class="name">${c.key}</div>
+      <span class="count">${list.length || 0} universities</span>
+    </div>`;
+  card.addEventListener('click', ()=>showCountry(c.key));
+  board.appendChild(card);
 });
 
-let layer = L.layerGroup().addTo(map);
+/* ---- Right panel population ---- */
+const titleEl = document.getElementById('panelTitle');
+const countEl  = document.getElementById('countBadge');
+const listEl = document.getElementById('uniList');
 
-function draw(){
-  layer.clearLayers();
-  const cf = countryEl.value, tf = tierEl.value, q = qEl.value.trim().toLowerCase();
+function showCountry(country){
+  const list = universitiesByCountry(country);
+  titleEl.textContent = country || 'Pick a country';
+  countEl.textContent = `${list.length} ${list.length===1?'university':'universities'}`;
 
-  const filtered = universities.filter(u=>{
-    const t = tier(u.euRank);
-    const okCountry = (cf==="ALL" || u.country===cf);
-    const okTier = (tf==="ALL" || t===tf);
-    const okSearch = !q || u.name.toLowerCase().includes(q);
-    return okCountry && okTier && okSearch;
-  });
-
-  filtered.forEach(u=>{
-    const t = tier(u.euRank);
-    const marker = L.circleMarker([u.lat,u.lng], {
-      radius: 7, weight: 1.2, color: "#1d2a31", fillColor: color(t), fillOpacity: 0.92
-    }).bindPopup(`
+  listEl.innerHTML = list.map(u=>`
+    <div class="uni">
+      <div class="rank ${tier(u.euRank)}">#${u.euRank}</div>
       <div>
-        <div style="font-weight:700; margin-bottom:4px;">${rankLine(u)}</div>
-        <div>${u.name}</div>
-        <div class="muted">${u.city}, ${u.country}</div>
+        <div class="uni-name">${u.name}</div>
+        <div class="meta">Rank in Europe</div>
       </div>
-    `);
-    marker.addTo(layer);
-  });
-
-  if (filtered.length){
-    const b = L.latLngBounds(filtered.map(u=>[u.lat,u.lng]));
-    map.fitBounds(b.pad(0.18), { animate:false });
-  }
+    </div>
+  `).join('') || `<div style="padding:12px;color:var(--muted)">No entries yet.</div>`;
 }
-countryEl.addEventListener('change', draw);
-tierEl.addEventListener('change', draw);
-qEl.addEventListener('input', ()=>{ if(window.__d)clearTimeout(window.__d); window.__d=setTimeout(draw,180); });
 
-draw();
+/* Default selection (UK if present) */
+showCountry('United Kingdom');
 </script>
 </body>
 </html>
