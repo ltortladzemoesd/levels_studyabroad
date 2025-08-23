@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Levels Academy – Europe (Clickable Countries)</title>
+<title>Levels Academy – Europe (Clickable Countries, Smart Labels)</title>
 
-<!-- D3 + TopoJSON + polylabel (for placing labels inside borders) -->
+<!-- D3 + TopoJSON + polylabel (point-inside-polygon) -->
 <script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
 <script src="https://unpkg.com/@mapbox/polylabel@1.1.0/polylabel.min.js"></script>
@@ -26,7 +26,7 @@
   svg{width:100%;height:100%}
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
-  .label{fill:#000; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; pointer-events:none; }
+  .label{fill:#000; font-weight:800; text-transform:uppercase; letter-spacing:.3px; pointer-events:none;}
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
   .panel-title{font-weight:800}
@@ -77,12 +77,12 @@ const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank
 
 // ===== MAP =====
 const svg = d3.select('#map');
-const gCountries = svg.append('g'); // countries
-const gLabels    = svg.append('g'); // country names (we cull overlaps on zoom)
+const gCountries = svg.append('g');
+const gLabels    = svg.append('g');
 
-let projection, path;
+let projection, path, labelNodes=[];
 
-// Europe-only allowlist (to avoid Syria etc.)
+// Europe allowlist (map content)
 const EUROPE_LIST = new Set([
   "Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Croatia","Czechia",
   "Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy",
@@ -91,13 +91,29 @@ const EUROPE_LIST = new Set([
   "Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican","Georgia","Turkey"
 ]);
 
-// zoom & pan
+// Name fixes (display nicer names)
+const NAME_OVERRIDES = new Map([
+  ["Bosnia and Herz.","Bosnia & Herzegovina"],
+  ["Czechia","Czech Republic"],
+  ["North Macedonia","N. Macedonia"]
+]);
+
+// Micro-states to HIDE at low zoom; reveal when zoomed in
+const MICRO_STATES = new Set(["Andorra","Monaco","San Marino","Vatican","Liechtenstein","Luxembourg","Malta"]);
+
+// High-priority big countries — always label (helps “FRANCE”, “NORWAY”, etc.)
+const ALWAYS_LABEL = new Set(["France","Spain","Germany","Italy","United Kingdom","Norway","Sweden","Finland","Poland","Turkey","Ukraine"]);
+
 const zoom = d3.zoom().scaleExtent([1, 8]).on('zoom', (ev)=>{
-  const {transform} = ev;
-  gCountries.attr('transform', transform);
-  gLabels.attr('transform', transform);
-  // Re-run label culling each zoom so names never overlap
-  cullLabels();
+  const k = ev.transform.k;
+  gCountries.attr('transform', ev.transform);
+  gLabels.attr('transform', ev.transform);
+
+  // Scale the font with zoom (base 12px → grows smoothly)
+  gLabels.selectAll('text.label')
+    .style('font-size', `${Math.max(10, 10 + (k-1)*2.2)}px`);
+
+  cullLabels(k);
 });
 svg.call(zoom);
 
@@ -108,115 +124,119 @@ function render(){
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
-    // Filter to Europe allowlist
-    const europe = world.features.filter(f => EUROPE_LIST.has(nameOf(f)));
+    const europe = world.features.filter(f => EUROPE_LIST.has(rawName(f)));
 
     // Draw countries
     gCountries.selectAll('path.country')
-      .data(europe, d=>nameOf(d))
+      .data(europe, d=>rawName(d))
       .join('path')
       .attr('class','country')
       .attr('d', path)
-      .on('click', (e,d)=> showCountry(nameOf(d)))
+      .on('click', (e,d)=> showCountry(displayName(d)))
       .on('mouseenter', function(){ d3.select(this).attr('fill','var(--hover)'); })
       .on('mouseleave', function(){ d3.select(this).attr('fill','var(--land)'); })
       .attr('fill','var(--land)')
       .attr('stroke','var(--border)');
 
-    // Prepare label data: place inside polygon using polylabel; fallback to centroid
-    const labelData = europe.map(f=>{
+    // Build label candidates with polylabel (inside polygon) + area + priority
+    const candidates = europe.map(f=>{
+      const name = displayName(f);
       const geom = f.geometry;
+      const area = d3.geoArea(f);  // used for priority
       let bestLL = null;
       try{
         if(geom.type === "Polygon"){
-          bestLL = polylabel(geom.coordinates, 1.0); // returns [lon,lat]
+          bestLL = polylabel(geom.coordinates, 1.0);
         }else if(geom.type === "MultiPolygon"){
-          // pick largest polygon for label
-          let best = null, bestArea = -Infinity;
+          let best = null, bestA = -Infinity;
           for(const poly of geom.coordinates){
             const ll = polylabel(poly, 1.0);
-            const a = ringArea(poly[0]); // rough area
-            if(a > bestArea){ bestArea = a; best = ll; }
+            const a = ringArea(poly[0]);
+            if(a > bestA){ bestA = a; best = ll; }
           }
           bestLL = best;
         }
       }catch(_){}
-      if(!bestLL){ // fallback: geographic centroid
-        bestLL = d3.geoCentroid(f);
-      }
-      const xy = projection(bestLL);
-      return {name: nameOf(f), x: xy[0], y: xy[1], feature:f};
+      if(!bestLL) bestLL = d3.geoCentroid(f);
+
+      const [x,y] = projection(bestLL);
+      return {name, feature:f, x, y, area};
     });
 
-    // Draw labels
+    // Draw labels (will be culled per zoom)
     gLabels.selectAll('text.label')
-      .data(labelData, d=>d.name)
+      .data(candidates, d=>d.name)
       .join('text')
       .attr('class','label')
       .attr('x', d=>d.x)
       .attr('y', d=>d.y)
       .text(d=>d.name.toUpperCase());
 
-    // Initial cull to avoid overlaps
-    cullLabels();
+    labelNodes = candidates;   // keep for culling
+    cullLabels(1);             // initial state
   });
 }
 
-function nameOf(f){
-  // world-atlas uses 'name' for display
-  return (f.properties && (f.properties.name || f.id)) || 'Unknown';
-}
+function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
+function displayName(f){ const n = rawName(f); return NAME_OVERRIDES.get(n) || n; }
 
-// naive polygon ring area in lon/lat (just for picking the largest ring)
+// naive ring area (lon/lat) for picking largest multipolygon ring
 function ringArea(ring){
   let a=0; for(let i=0, j=ring.length-1; i<ring.length; j=i++){
     const [x1,y1]=ring[j], [x2,y2]=ring[i]; a += (x1*y2 - x2*y1);
   } return Math.abs(a/2);
 }
 
-// Hide labels that overlap or spill outside their country (fast bounding-box cull)
-function cullLabels(){
-  const labels = gLabels.selectAll('text.label');
-  // reset visibility
-  labels.attr('display', null);
+/** Cull overlapping labels + apply LOD rules.
+ *  k = zoom level (1..8). At low zoom show only large/priority countries;
+ *  as you zoom in, progressively show smaller ones (including micro-states).
+ */
+function cullLabels(k){
+  const labelsSel = gLabels.selectAll('text.label').attr('display', null);
 
-  // 1) measure each label (approx) in screen space
-  const nodes = [];
-  labels.each(function(d){
+  // LOD thresholds (tune as needed)
+  // Keep labels whose country area is above threshold, OR in ALWAYS_LABEL set.
+  // On higher zoom, lower the threshold so more labels appear.
+  const areaThreshold = (k < 1.5) ? 0.30   // show only very large countries
+                     : (k < 2.5) ? 0.12
+                     : (k < 4.0) ? 0.05
+                     :              0.00; // show almost all
+
+  labelsSel.each(function(d){
+    const isMicro = MICRO_STATES.has(d.name);
+    const force   = ALWAYS_LABEL.has(d.name);
+    const showByArea = d.area >= areaThreshold;
+
+    // micro-states hidden until fairly zoomed in
+    const showMicro = (k >= 4.0);
+
+    const keep = force || (showByArea && (!isMicro || showMicro));
+    if(!keep) d3.select(this).attr('display','none');
+  });
+
+  // Greedy collision removal among the remaining visible ones
+  const visible = [];
+  labelsSel.each(function(d){
+    if(this.getAttribute('display') === 'none') return;
     const el = this;
-    const name = d.name.toUpperCase();
-    // quick width estimate: characters * 7.2px (bold uppercase)
-    const width = name.length * 7.2;
-    const height = 12; // font-size
+    const fontPx = parseFloat(window.getComputedStyle(el).fontSize) || 12;
+    const txt = d.name.toUpperCase();
+    const width = txt.length * (fontPx * 0.62); // text width approximation
+    const height = fontPx;
     const x = +el.getAttribute('x') - width/2;
     const y = +el.getAttribute('y') - height/2;
-    nodes.push({el, d, x, y, width, height});
+
+    // drop if overlaps any already placed
+    const overlaps = visible.some(p => !(x+width < p.x || p.x+p.width < x || y+height < p.y || p.y+p.height < y));
+    if(overlaps){ d3.select(el).attr('display','none'); return; }
+
+    // ensure anchor point is inside the country shape at current transform
+    const ll = projection.invert([x + width/2, y + height/2]);
+    if(!ll || !d3.geoContains(d.feature, ll)){ d3.select(el).attr('display','none'); return; }
+
+    visible.push({x,y,width,height});
   });
-
-  // 2) sort by country area (bigger countries get labels first)
-  nodes.sort((a,b)=>{
-    const ap = d3.geoArea(a.d.feature);
-    const bp = d3.geoArea(b.d.feature);
-    return bp - ap;
-  });
-
-  // 3) greedy collision removal
-  const placed = [];
-  for(const n of nodes){
-    // check overlap
-    const overlaps = placed.some(p => !(n.x+n.width < p.x || p.x+p.width < n.x || n.y+n.height < p.y || p.y+p.height < n.y));
-    if(overlaps){ d3.select(n.el).attr('display','none'); continue; }
-
-    // ensure label anchor point lies inside the country
-    const ll = projection.invert([n.x + n.width/2, n.y + n.height/2]);
-    if(!ll || !d3.geoContains(n.d.feature, ll)){ d3.select(n.el).attr('display','none'); continue; }
-
-    placed.push(n);
-  }
 }
-
-window.addEventListener('resize', render);
-render();
 
 // ===== RIGHT PANEL =====
 const titleEl = document.getElementById('panelTitle');
@@ -235,8 +255,10 @@ function showCountry(country){
     </div>
   `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
-// Optional default
-showCountry('United Kingdom');
+
+window.addEventListener('resize', render);
+render();
+showCountry('United Kingdom'); // optional default
 </script>
 </body>
 </html>
