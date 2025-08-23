@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Levels Academy – Europe (Screen-constant Labels)</title>
+<title>Levels Academy – Europe (Screen-constant, Panel-matched Labels)</title>
 
 <script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
@@ -20,12 +20,15 @@
   .app{display:grid;grid-template-columns:1.5fr .9fr;height:100vh}
   .map-wrap{background:var(--sea)}
   svg{width:100%;height:100%}
+
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
+  /* Labels: same font & color as uni names. No ALL CAPS. */
   .label{
-    fill:#000; font-weight:800; text-transform:uppercase; letter-spacing:.3px; pointer-events:none;
-    paint-order: stroke; stroke:rgba(255,255,255,.9); stroke-width:3px; /* halo for readability */
+    fill:var(--ink); font-weight:700; letter-spacing:0; pointer-events:none;
+    paint-order:stroke; stroke:rgba(255,255,255,.85); stroke-width:2px; /* subtle halo */
   }
+
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
   .panel-title{font-weight:800}
@@ -34,7 +37,9 @@
   .uni{border:1px solid #eef2f5;border-radius:14px;padding:10px 12px;margin:8px 0}
   .rank{display:inline-block;padding:2px 8px;border-radius:8px;font-weight:800;color:#fff;margin-bottom:4px}
   .rank.t1{background:var(--t1)} .rank.t2{background:var(--t2);color:#222} .rank.t3{background:var(--t3)}
-  .uni-name{font-weight:700;color:var(--ink)} .muted{color:var(--muted);font-size:12px}
+  .uni-name{font-weight:700;color:var(--ink); font-size:16px;} /* <- panel reference size */
+  .muted{color:var(--muted);font-size:12px}
+
   @media (max-width:900px){ .app{grid-template-columns:1fr;grid-template-rows:55vh 1fr} .panel{border-left:none;border-top:1px solid #e9eef2} }
 </style>
 </head>
@@ -52,7 +57,7 @@
 </div>
 
 <script>
-// -------- Demo QS data (swap with your Excel extract) --------
+// ---------- Demo QS data (replace with your Excel extract) ----------
 const QS = [
   {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
   {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
@@ -72,14 +77,15 @@ const QS = [
 const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
 const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
-// -------- Map scaffolding --------
+// ---------- Map scaffolding ----------
 const svg = d3.select('#map');
-const gCountries = svg.append('g');     // zoomed (scale + translate)
-const gLabels = svg.append('g');        // NOT scaled; we reposition labels manually
+const gCountries = svg.append('g'); // zoomed
+const gLabels = svg.append('g');    // screen-constant
 
 let projection, path;
 let LABELS = [];
 
+// Europe keep-list
 const EUROPE = new Set([
   "Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Croatia","Czechia",
   "Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy",
@@ -93,21 +99,31 @@ const NAME_FIX = new Map([
   ["Czechia","Czech Republic"],
   ["North Macedonia","N. Macedonia"]
 ]);
+// always show at low zoom so “France / Norway / Italy …” appear
+const ALWAYS = new Set(["France","Spain","Germany","Italy","United Kingdom","Norway","Sweden","Finland","Poland","Turkey","Ukraine","Romania"]);
+// micro-states hidden until high zoom
+const MICRO = new Set(["Andorra","Monaco","San Marino","Vatican","Liechtenstein","Luxembourg","Malta"]);
 
-// accurate text measuring for collision
-const measure = (() => {
-  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
-  return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
+// gentle per-country label nudges (px) to improve placement
+const NUDGE = new Map([
+  ["France",[0,-18]],
+  ["Italy",[6,-6]],
+  ["United Kingdom",[0,-6]],
+  ["Switzerland",[6,6]],
+  ["Netherlands",[0,8]],
+  ["Poland",[6,0]]
+]);
+
+// canvas measure for pixel-accurate collision
+const measure = (() => { const c=document.createElement('canvas'); const ctx=c.getContext('2d');
+  return (text, px) => { ctx.font=`700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
 })();
 
-// Zoom:
-// - countries group gets full transform (scale+translate)
-// - labels are re-positioned to screen coords each tick (no scale)
-// - font size and halo shrink by exactly 1/k (screen-constant look)
-const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
+// zoom: countries scale; labels are repositioned and inverse-scaled
+const zoom = d3.zoom().scaleExtent([1,9]).on('zoom', ev=>{
   const t = ev.transform, k = t.k;
   gCountries.attr('transform', t);
-  updateLabels(k, t);       // <-- key: inverse-scale fonts + reposition
+  updateLabels(k, t);
 });
 svg.call(zoom);
 
@@ -132,34 +148,35 @@ function render(){
       .attr('fill','var(--land)')
       .attr('stroke','var(--border)');
 
-    // Label anchors via polylabel (inside polygon)
+    // Label anchors
     LABELS = features.map(f=>{
       const name = displayName(f);
       const geom = f.geometry;
+      const area = d3.geoArea(f);
       let ll;
       try{
-        if(geom.type === "Polygon") ll = polylabel(geom.coordinates, 1.0);
-        else if(geom.type === "MultiPolygon"){
-          let best=null, bestA=-Infinity;
+        if(geom.type==="Polygon") ll = polylabel(geom.coordinates, 1.0);
+        else if(geom.type==="MultiPolygon"){
+          let best=null,bestA=-Infinity;
           for(const poly of geom.coordinates){
-            const cand = polylabel(poly, 1.0);
-            const A = ringArea(poly[0]); if(A>bestA){bestA=A; best=cand;}
+            const cand=polylabel(poly,1.0);
+            const A=ringArea(poly[0]); if(A>bestA){bestA=A; best=cand;}
           }
-          ll = best;
+          ll=best;
         }
       }catch(_){ ll = d3.geoCentroid(f); }
-      const [x,y] = projection(ll);   // base screen coords at k=1
-      return {name, feature:f, x, y};
+      let [x,y]=projection(ll);
+      const n = NUDGE.get(name); if(n){ x+=n[0]; y+=n[1]; }
+      return {name, feature:f, x, y, area};
     });
 
-    // Create label nodes (we’ll control x/y/size on zoom)
+    // Create label nodes; content controlled by updateLabels()
     gLabels.selectAll('text.label')
       .data(LABELS, d=>d.name)
       .join('text')
       .attr('class','label')
-      .text(d=>d.name.toUpperCase());
+      .text(d=>d.name); // <-- sentence case, no ALL CAPS
 
-    // initial layout (k=1, identity)
     updateLabels(1, d3.zoomIdentity);
   });
 }
@@ -168,43 +185,50 @@ function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Un
 function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
-/** Keep labels screen-constant:
- *  - position each label with the zoom transform (applyX/applyY)
- *  - font size = basePx / k
- *  - halo stroke width = baseStroke / k
- *  - simple collision pass in *screen space* using the computed px
+/** Screen-constant labels:
+ *  base font = 16px (matches .uni-name). On zoom k, size = 16/k so it *looks* the same.
+ *  Static view decluttered: small budget + micro-states hidden; ALWAYS countries forced.
  */
 function updateLabels(k, t){
-  const basePx = 22;                 // size at rest
+  const basePx = 16;                 // match .uni-name
   const px = Math.max(10, basePx / k);
-  const halo = Math.max(1, 3 / k);
+  const halo = Math.max(1, 2 / k);
 
-  // position + size first
-  const sel = gLabels.selectAll('text.label')
+  // density budget (few at rest; even fewer while zooming in)
+  const baseBudget = 16;             // ~how many names in static mode
+  const budget = Math.max(6, Math.round(baseBudget - (k-1)*2));
+
+  // rank by area + low-zoom boost for MUST-have countries
+  const boost = (k < 2.2) ? 1.0 : 0.2;
+  const candidates = LABELS
+    .filter(d => (k>=5 || !MICRO.has(d.name))) // hide micro-states until zoomed in
+    .map(d => ({...d, score: d.area + (ALWAYS.has(d.name) ? boost : 0)}))
+    .sort((a,b)=> b.score - a.score);
+
+  // greedy collision in screen space
+  const placed = [];
+  for(const c of candidates){
+    if(placed.length >= budget) break;
+    const w = measure(c.name, px), h = px;
+    const x = t.applyX(c.x) - w/2, y = t.applyY(c.y) - h/2;
+
+    const hit = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
+    if(hit) continue;
+
+    placed.push({name:c.name, x, y, w, h});
+  }
+  const showing = new Set(placed.map(p=>p.name));
+
+  const sel = gLabels.selectAll('text.label');
+  sel
     .style('font-size', `${px}px`)
     .style('stroke-width', `${halo}px`)
     .attr('x', d => t.applyX(d.x))
     .attr('y', d => t.applyY(d.y))
-    .attr('display', null);
-
-  // collision cull in screen space
-  const placed = [];
-  sel.each(function(d){
-    const el = this;
-    const text = d.name.toUpperCase();
-    const w = measure(text, px);
-    const h = px;
-    const x = +el.getAttribute('x') - w/2;
-    const y = +el.getAttribute('y') - h/2;
-
-    const overlap = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
-    if(overlap){ el.setAttribute('display','none'); return; }
-
-    placed.push({x,y,w,h});
-  });
+    .attr('display', d => showing.has(d.name) ? null : 'none');
 }
 
-// -------- Right panel --------
+// ---------- Right panel ----------
 function showCountry(country){
   const list = byCountry(country);
   document.getElementById('panelTitle').textContent = country;
