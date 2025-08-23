@@ -3,202 +3,167 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levels Academy – University Map (QS Europe 2025)</title>
+<title>Levels Academy – Simple University Map</title>
 
-<!-- Leaflet CSS/JS -->
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- Simple styles -->
 <style>
-  html, body { height: 100%; margin: 0; font-family: system-ui, Arial, sans-serif; }
-  #app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#f7f8f9; }
+  #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
   header {
-    padding: 10px 14px; background: #2B445B; color: white;
-    display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center;
+    padding:10px 14px; background:#2B445B; color:#fff;
+    display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:center;
   }
-  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  .control { display: inline-flex; gap: 8px; align-items: center; background: rgba(255,255,255,0.08); padding: 6px 8px; border-radius: 8px; }
-  .control label { font-size: 13px; opacity: 0.85; }
-  .control input, .control select {
-    border: none; padding: 6px 8px; border-radius: 6px; outline: none;
+  header h1{ margin:0; font-size:16px; font-weight:600; }
+  .control{ display:inline-flex; gap:8px; align-items:center; }
+  .control label{ font-size:13px; opacity:.9 }
+  .control select, .control input{
+    border:none; padding:6px 8px; border-radius:8px; outline:none; background:#f1f4f6;
   }
-  #map { width: 100%; height: 100%; }
+  #map{ width:100%; height:100%; background:#eef2f4; }
+
+  /* Minimal legend */
   .legend {
-    position: absolute; bottom: 14px; left: 14px; background: white; padding: 10px 12px;
-    border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.15); font-size: 13px;
+    position:absolute; bottom:12px; left:12px; background:white; padding:10px 12px;
+    border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.08); font-size:13px;
   }
-  .legend .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
-  .dot.tier1 { background: #23B899; } /* 1–50 */
-  .dot.tier2 { background: #FDE200; } /* 51–200 */
-  .dot.tier3 { background: #F66E6E; } /* 201+ */
-  .leaflet-popup-content { font-size: 14px; }
-  .cta {
-    display: inline-block; margin-top: 8px; padding: 8px 12px; border-radius: 999px;
-    background: #23B899; color: #10201a; text-decoration: none; font-weight: 600;
+  .legend .row{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .dot{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+  .dot.t1{ background:#23B899 } /* 1–50 */
+  .dot.t2{ background:#FDE200 } /* 51–200 */
+  .dot.t3{ background:#F66E6E } /* 201+ */
+
+  .leaflet-control-zoom{ box-shadow:none !important; }
+  .leaflet-control-attribution{ font-size:11px; opacity:.7; }
+  .leaflet-popup-content{ font-size:14px; }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eef4f3; font-size:12px; margin-left:6px; }
+  .muted{ color:#667; font-size:13px; }
+  .cta{
+    display:inline-block; margin-top:8px; padding:8px 12px; border-radius:999px;
+    background:#23B899; color:#10201a; text-decoration:none; font-weight:600;
   }
-  .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef4f3; font-size:12px; margin-left:6px; }
-  .muted { color: #666; font-size: 13px; }
 </style>
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>QS Europe 2025 • Explore Top Universities</h1>
+<div id="app">
+  <header>
+    <h1>QS Europe 2025 • Top Universities</h1>
 
-      <div class="control">
-        <label for="countrySelect">Country</label>
-        <select id="countrySelect">
-          <option value="ALL">All</option>
-        </select>
-      </div>
+    <div class="control">
+      <label for="country">Country</label>
+      <select id="country"><option value="ALL">All</option></select>
+    </div>
 
-      <div class="control">
-        <label for="tierSelect">Rank tier</label>
-        <select id="tierSelect">
-          <option value="ALL">All</option>
-          <option value="T1">Top 1–50</option>
-          <option value="T2">51–200</option>
-          <option value="T3">201+</option>
-        </select>
-      </div>
+    <div class="control">
+      <label for="tier">Rank</label>
+      <select id="tier">
+        <option value="ALL">All</option>
+        <option value="T1">1–50</option>
+        <option value="T2">51–200</option>
+        <option value="T3">201+</option>
+      </select>
+    </div>
 
-      <div class="control">
-        <label for="searchBox">Search</label>
-        <input id="searchBox" type="search" placeholder="University name…" />
-      </div>
-    </header>
+    <div class="control">
+      <label for="q">Search</label>
+      <input id="q" type="search" placeholder="University name…" />
+    </div>
+  </header>
 
-    <div id="map"></div>
-  </div>
+  <div id="map"></div>
+</div>
 
-  <div class="legend">
-    <div><strong>Legend</strong></div>
-    <div class="row"><span class="dot tier1"></span> Top 1–50</div>
-    <div class="row"><span class="dot tier2"></span> 51–200</div>
-    <div class="row"><span class="dot tier3"></span> 201+</div>
-  </div>
+<div class="legend">
+  <div><strong>Legend</strong></div>
+  <div class="row"><span class="dot t1"></span> 1–50</div>
+  <div class="row"><span class="dot t2"></span> 51–200</div>
+  <div class="row"><span class="dot t3"></span> 201+</div>
+</div>
 
 <script>
-/** =========================
- *  1) DATA (demo: top entries)
- *  Add / edit rows as needed; lat/lng are city-level for campus locations.
- *  ========================= */
+/* ---------- DATA (demo subset; replace/extend later) ---------- */
 const universities = [
   {rank:1,  name:"ETH Zurich – Swiss Federal Institute of Technology", country:"Switzerland", lat:47.3769, lng:8.5417, city:"Zurich"},
   {rank:2,  name:"Imperial College London", country:"United Kingdom", lat:51.4988, lng:-0.1749, city:"London"},
   {rank:3,  name:"University of Oxford", country:"United Kingdom", lat:51.7548, lng:-1.2544, city:"Oxford"},
   {rank:4,  name:"University of Cambridge", country:"United Kingdom", lat:52.2043, lng:0.1149, city:"Cambridge"},
   {rank:5,  name:"UCL (University College London)", country:"United Kingdom", lat:51.5246, lng:-0.1340, city:"London"},
-  {rank:6,  name:"The University of Edinburgh", country:"United Kingdom", lat:55.9443, lng:-3.1883, city:"Edinburgh"},
-  {rank:7,  name:"The University of Manchester", country:"United Kingdom", lat:53.4668, lng:-2.2339, city:"Manchester"},
-  {rank:8,  name:"King’s College London", country:"United Kingdom", lat:51.5113, lng:-0.1156, city:"London"},
   {rank:9,  name:"Université PSL (Paris Sciences & Lettres)", country:"France", lat:48.8470, lng:2.3459, city:"Paris"},
   {rank:10, name:"EPFL – École polytechnique fédérale de Lausanne", country:"Switzerland", lat:46.5191, lng:6.5668, city:"Lausanne"},
   {rank:11, name:"Technical University of Munich (TUM)", country:"Germany", lat:48.1486, lng:11.5685, city:"Munich"},
-  {rank:12, name:"The London School of Economics and Political Science (LSE)", country:"United Kingdom", lat:51.5145, lng:-0.1166, city:"London"},
   {rank:13, name:"Lund University", country:"Sweden", lat:55.7047, lng:13.1910, city:"Lund"},
-  {rank:14, name:"University of Bristol", country:"United Kingdom", lat:51.4584, lng:-2.6020, city:"Bristol"},
   {rank:15, name:"Delft University of Technology", country:"Netherlands", lat:51.9998, lng:4.3739, city:"Delft"},
-  {rank:16, name:"University of Warwick", country:"United Kingdom", lat:52.3790, lng:-1.5616, city:"Coventry/Warwick"},
   {rank:17, name:"University of Amsterdam", country:"Netherlands", lat:52.3557, lng:4.9557, city:"Amsterdam"},
-  {rank:18, name:"Ludwig-Maximilians-Universität München (LMU)", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"},
-  {rank:19, name:"University of Glasgow", country:"United Kingdom", lat:55.8719, lng:-4.2871, city:"Glasgow"},
-  {rank:20, name:"(Demo) Another Top University", country:"United Kingdom", lat:51.5074, lng:-0.1278, city:"London"} // placeholder row
+  {rank:18, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
 ];
 
-// Compute tier + marker color
-function tierFor(rank){
-  if (rank <= 50) return "T1";
-  if (rank <= 200) return "T2";
-  return "T3";
-}
-function colorForTier(t){
-  return t === "T1" ? "#23B899" : t === "T2" ? "#FDE200" : "#F66E6E";
-}
+function tier(rank){ if(rank<=50) return "T1"; if(rank<=200) return "T2"; return "T3"; }
+function color(t){ return t==="T1"?"#23B899":(t==="T2"?"#FDE200":"#F66E6E"); }
 
-/** =========================
- *  2) MAP
- *  ========================= */
-const map = L.map('map', { zoomControl: true, minZoom: 3 }).setView([51.2, 10.4], 5);
+/* ---------- MAP (minimal basemap) ---------- */
+const map = L.map('map', { zoomControl:true, minZoom:3 }).setView([51.2, 10.4], 5);
 
-// Basemap (no API key)
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "&copy; OpenStreetMap contributors"
-}).addTo(map);
+/* Carto Positron no-labels (very clean) */
+const base = L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+  { attribution: "&copy; OpenStreetMap &copy; CARTO" }
+).addTo(map);
 
-// Build country dropdown from data
-const countrySelect = document.getElementById('countrySelect');
-const uniqueCountries = Array.from(new Set(universities.map(u => u.country))).sort();
-uniqueCountries.forEach(c => {
-  const opt = document.createElement('option');
-  opt.value = c; opt.textContent = c;
-  countrySelect.appendChild(opt);
+/* Optional faint label overlay (country names only feel) */
+const labels = L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+  { opacity: 0.45, pane: "overlayPane" }
+).addTo(map);
+
+/* ---------- Controls data ---------- */
+const countryEl = document.getElementById('country');
+const tierEl = document.getElementById('tier');
+const qEl = document.getElementById('q');
+
+[...new Set(universities.map(u=>u.country))].sort().forEach(c=>{
+  const opt = document.createElement('option'); opt.value=c; opt.textContent=c; countryEl.appendChild(opt);
 });
 
-// Create a LayerGroup so we can filter markers
-let markersLayer = L.layerGroup().addTo(map);
+/* ---------- Markers (clean dots) ---------- */
+let layer = L.layerGroup().addTo(map);
 
-// Draw markers with current filters
-function drawMarkers(){
-  markersLayer.clearLayers();
+function draw(){
+  layer.clearLayers();
+  const cf = countryEl.value, tf = tierEl.value, q = qEl.value.trim().toLowerCase();
 
-  const countryFilter = countrySelect.value;
-  const tierFilter = document.getElementById('tierSelect').value;
-  const searchTerm = document.getElementById('searchBox').value.trim().toLowerCase();
-
-  const filtered = universities.filter(u => {
-    const t = tierFor(u.rank);
-    const passCountry = (countryFilter === "ALL" || u.country === countryFilter);
-    const passTier = (tierFilter === "ALL" || t === tierFilter);
-    const passSearch = (!searchTerm || u.name.toLowerCase().includes(searchTerm));
-    return passCountry && passTier && passSearch;
+  const filtered = universities.filter(u=>{
+    const t = tier(u.rank);
+    const okCountry = (cf==="ALL" || u.country===cf);
+    const okTier = (tf==="ALL" || t===tf);
+    const okSearch = !q || u.name.toLowerCase().includes(q);
+    return okCountry && okTier && okSearch;
   });
 
-  filtered.forEach(u => {
-    const t = tierFor(u.rank);
-    const color = colorForTier(t);
-
-    const marker = L.circleMarker([u.lat, u.lng], {
-      radius: 7, weight: 1.5, color: "#10201a", fillColor: color, fillOpacity: 0.9
-    });
-
-    const popupHtml = `
+  filtered.forEach(u=>{
+    const t = tier(u.rank);
+    const m = L.circleMarker([u.lat,u.lng], {
+      radius: 7, weight: 1, color: "#1d2a31", fillColor: color(t), fillOpacity: 0.92
+    }).bindPopup(`
       <div>
         <div style="font-weight:700">${u.name} <span class="pill">#${u.rank}</span></div>
         <div class="muted">${u.city}, ${u.country}</div>
-        <a class="cta" href="https://levelsacademy.ge/contact" target="_blank" rel="noopener">
-          Apply via Levels Academy
-        </a>
+        <a class="cta" href="https://levelsacademy.ge/contact" target="_blank" rel="noopener">Apply via Levels Academy</a>
       </div>
-    `;
-
-    marker.bindPopup(popupHtml);
-    marker.addTo(markersLayer);
+    `);
+    m.addTo(layer);
   });
 
-  // Fit bounds to filtered markers
   if (filtered.length){
-    const bounds = L.latLngBounds(filtered.map(u => [u.lat, u.lng]));
-    map.fitBounds(bounds.pad(0.15), { animate: false });
+    const b = L.latLngBounds(filtered.map(u=>[u.lat,u.lng]));
+    map.fitBounds(b.pad(0.15), { animate:false });
   }
 }
+countryEl.addEventListener('change', draw);
+tierEl.addEventListener('change', draw);
+qEl.addEventListener('input', ()=>{ if(window.__d)clearTimeout(window.__d); window.__d=setTimeout(draw,180); });
 
-// Hook up controls
-countrySelect.addEventListener('change', drawMarkers);
-document.getElementById('tierSelect').addEventListener('change', drawMarkers);
-document.getElementById('searchBox').addEventListener('input', () => {
-  // small debounce for nicer typing feel
-  if (window.__sb) clearTimeout(window.__sb);
-  window.__sb = setTimeout(drawMarkers, 200);
-});
-
-// First draw
-drawMarkers();
+draw();
 </script>
 </body>
 </html>
