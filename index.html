@@ -7,9 +7,11 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- TopoJSON client to convert world-atlas TopoJSON -> GeoJSON in-browser -->
+<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 
 <style>
-  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#f6f7f8; }
+  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#ffffff; }
   #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
   header {
     padding:10px 14px; background:#2B445B; color:#fff;
@@ -23,7 +25,6 @@
   }
   #map{ width:100%; height:100%; background:#ffffff; }
 
-  /* Legend – minimal */
   .legend {
     position:absolute; bottom:12px; left:12px; background:white; padding:10px 12px;
     border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.08); font-size:13px;
@@ -37,11 +38,7 @@
   .leaflet-control-zoom{ box-shadow:none !important; }
   .leaflet-control-attribution{ font-size:11px; opacity:.7; }
   .leaflet-popup-content{ font-size:14px; }
-  .pill{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eef4f3; font-size:12px; margin-left:6px; }
   .muted{ color:#667; font-size:13px; }
-
-  /* Border pane to ensure borders sit behind markers */
-  .leaflet-pane.border-pane { z-index: 200; }
 </style>
 </head>
 <body>
@@ -97,34 +94,35 @@ const universities = [
   {euRank:18, globalRank:59, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
 ];
 
-// Tier & color
 function tier(euRank){ if(euRank<=50) return "T1"; if(euRank<=200) return "T2"; return "T3"; }
 function color(t){ return t==="T1"?"#23B899":(t==="T2"?"#FDE200":"#F66E6E"); }
+function rankLine(u){
+  let line = `Rank #${u.euRank} in Europe`;
+  if (u.globalRank && Number.isFinite(u.globalRank)) line += ` • Rank #${u.globalRank} Globally`;
+  return line;
+}
 
-// ---------- MAP (no base tiles; add only borders as lines) ----------
+// ---------- MAP ----------
 const map = L.map('map', { zoomControl:true, minZoom:3, worldCopyJump:true })
   .setView([51.2, 10.4], 5);
 
-// Create a custom pane for borders so they sit below markers
-map.createPane('borderPane');
-map.getPane('borderPane').classList.add('border-pane');
-
-// Fetch Natural Earth country borders (admin-0). Only stroke, no fill.
-fetch('https://geojson.xyz/world/ne_110m_admin_0_countries.geojson')
-  .then(r=>r.json())
-  .then(geo=>{
+// Draw borders only (no basemap). Uses world-atlas (Top 110m) via jsDelivr.
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+  .then(r => r.json())
+  .then(topology => {
+    const geo = topojson.feature(topology, topology.objects.countries); // GeoJSON FeatureCollection
     L.geoJSON(geo, {
-      pane: 'borderPane',
+      pane: 'overlayPane',
       style: {
-        color: '#C8D0D4',      // soft gray line
+        color: '#C8D0D4',  // soft gray border
         weight: 1.2,
         opacity: 0.9,
-        fillOpacity: 0          // no fill – borders only
+        fillOpacity: 0     // no fill
       }
     }).addTo(map);
   });
 
-// ---------- Controls ----------
+// Controls
 const countryEl = document.getElementById('country');
 const tierEl = document.getElementById('tier');
 const qEl = document.getElementById('q');
@@ -134,14 +132,6 @@ const qEl = document.getElementById('q');
 });
 
 let layer = L.layerGroup().addTo(map);
-
-function rankLine(u){
-  let line = `Rank #${u.euRank} in Europe`;
-  if (u.globalRank && Number.isFinite(u.globalRank)){
-    line += ` • Rank #${u.globalRank} Globally`;
-  }
-  return line;
-}
 
 function draw(){
   layer.clearLayers();
@@ -181,4 +171,3 @@ draw();
 </script>
 </body>
 </html>
-
