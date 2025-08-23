@@ -3,15 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levels Academy – Clean University Map (Borders Only)</title>
+<title>Levels Academy – University Map (Clean, with Country Labels)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- TopoJSON client to convert world-atlas TopoJSON -> GeoJSON in-browser -->
-<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 
 <style>
-  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#ffffff; }
+  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#fff; }
   #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
   header {
     padding:10px 14px; background:#2B445B; color:#fff;
@@ -23,8 +21,14 @@
   .control select, .control input{
     border:none; padding:6px 8px; border-radius:8px; outline:none; background:#eef2f4;
   }
-  #map{ width:100%; height:100%; background:#ffffff; }
+  #map{ width:100%; height:100%; }
 
+  /* Subtle, clean look for the basemap */
+  .leaflet-tile {
+    filter: grayscale(100%) contrast(95%) brightness(104%);
+  }
+
+  /* Legend */
   .legend {
     position:absolute; bottom:12px; left:12px; background:white; padding:10px 12px;
     border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.08); font-size:13px;
@@ -36,7 +40,6 @@
   .dot.t3{ background:#F66E6E } /* 201+ */
 
   .leaflet-control-zoom{ box-shadow:none !important; }
-  .leaflet-control-attribution{ font-size:11px; opacity:.7; }
   .leaflet-popup-content{ font-size:14px; }
   .muted{ color:#667; font-size:13px; }
 </style>
@@ -78,7 +81,7 @@
 </div>
 
 <script>
-// ---------- DATA (demo subset; add globalRank when ready) ----------
+// ---------- DATA (demo subset; add globalRank when available) ----------
 const universities = [
   {euRank:1,  globalRank:7,  name:"ETH Zurich – Swiss Federal Institute of Technology", country:"Switzerland", lat:47.3769, lng:8.5417, city:"Zurich"},
   {euRank:2,  globalRank:2,  name:"Imperial College London", country:"United Kingdom", lat:51.4988, lng:-0.1749, city:"London"},
@@ -94,33 +97,24 @@ const universities = [
   {euRank:18, globalRank:59, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
 ];
 
+// Helpers
 function tier(euRank){ if(euRank<=50) return "T1"; if(euRank<=200) return "T2"; return "T3"; }
 function color(t){ return t==="T1"?"#23B899":(t==="T2"?"#FDE200":"#F66E6E"); }
 function rankLine(u){
-  let line = `Rank #${u.euRank} in Europe`;
-  if (u.globalRank && Number.isFinite(u.globalRank)) line += ` • Rank #${u.globalRank} Globally`;
-  return line;
+  let s = `Rank #${u.euRank} in Europe`;
+  if (Number.isFinite(u.globalRank)) s += ` • Rank #${u.globalRank} Globally`;
+  return s;
 }
 
-// ---------- MAP ----------
-const map = L.map('map', { zoomControl:true, minZoom:3, worldCopyJump:true })
+// ---------- MAP (Carto Positron with labels = clean borders + country names) ----------
+const map = L.map('map', { zoomControl:true, minZoom:3, maxZoom:7, worldCopyJump:true })
   .setView([51.2, 10.4], 5);
 
-// Draw borders only (no basemap). Uses world-atlas (Top 110m) via jsDelivr.
-fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-  .then(r => r.json())
-  .then(topology => {
-    const geo = topojson.feature(topology, topology.objects.countries); // GeoJSON FeatureCollection
-    L.geoJSON(geo, {
-      pane: 'overlayPane',
-      style: {
-        color: '#C8D0D4',  // soft gray border
-        weight: 1.2,
-        opacity: 0.9,
-        fillOpacity: 0     // no fill
-      }
-    }).addTo(map);
-  });
+// Carto Positron (clean, labeled). This shows country borders + names with very light roads.
+L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  { attribution: "&copy; OpenStreetMap &copy; CARTO", detectRetina: true }
+).addTo(map);
 
 // Controls
 const countryEl = document.getElementById('country');
@@ -147,15 +141,16 @@ function draw(){
 
   filtered.forEach(u=>{
     const t = tier(u.euRank);
-    L.circleMarker([u.lat,u.lng], {
-      radius: 7, weight: 1, color: "#1d2a31", fillColor: color(t), fillOpacity: 0.92
+    const marker = L.circleMarker([u.lat,u.lng], {
+      radius: 7, weight: 1.2, color: "#1d2a31", fillColor: color(t), fillOpacity: 0.92
     }).bindPopup(`
       <div>
         <div style="font-weight:700; margin-bottom:4px;">${rankLine(u)}</div>
         <div>${u.name}</div>
         <div class="muted">${u.city}, ${u.country}</div>
       </div>
-    `).addTo(layer);
+    `);
+    marker.addTo(layer);
   });
 
   if (filtered.length){
@@ -171,3 +166,4 @@ draw();
 </script>
 </body>
 </html>
+
