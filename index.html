@@ -149,7 +149,8 @@ function render(){
           ll = best;
         }
       }catch(_){ ll = d3.geoCentroid(f); }
-      const [x,y] = projection(ll);   // base screen coords at k=1
+      let [x,y] = projection(ll);   // base screen coords at k=1
+      if (name === 'France') { x += 36; y -= 6; } // <-- ONLY CHANGE: nudge France inland
       return {name, feature:f, x, y};
     });
 
@@ -225,3 +226,4 @@ showCountry('United Kingdom'); // optional default
 </script>
 </body>
 </html>
+
