@@ -1,113 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Levels Academy – Europe Interactive Map</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Levels Academy – Europe Map (Clickable Countries)</title>
+
+<!-- D3 + TopoJSON -->
+<script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
+
 <style>
-  html,body{margin:0;height:100%;font-family:ui-sans-serif,system-ui,Arial}
-  .app{display:grid;grid-template-columns:1.4fr .8fr;height:100%}
-  #map{height:100%;width:100%}
-  .panel{border-left:1px solid #ddd;display:flex;flex-direction:column}
-  .panel-head{padding:12px 16px;background:#2B445B;color:#fff;display:flex;justify-content:space-between;align-items:center}
-  .list{flex:1;overflow:auto;padding:12px}
-  .uni{padding:10px 12px;border:1px solid #eef2f5;border-radius:14px;margin:8px 0}
-  .rank{font-weight:700;padding:2px 8px;border-radius:8px;display:inline-block;margin-bottom:4px}
-  .rank.t1{background:#23B899;color:#fff}
-  .rank.t2{background:#FDE200;color:#222}
-  .rank.t3{background:#F66E6E;color:#fff}
-  .uni-name{font-weight:700}
-  .muted{color:#666;font-size:13px}
+  :root{
+    --sea:#27a6df;        /* ocean blue like your example */
+    --land:#ffffff;       /* white countries */
+    --border:#cfd6dc;     /* subtle grey borders */
+    --hover:#23B89922;    /* faint green hover fill */
+    --brand:#2B445B;
+    --ink:#16232b;
+    --muted:#6a7984;
+    --t1:#23B899; --t2:#FDE200; --t3:#F66E6E;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,Arial}
+  .app{display:grid;grid-template-columns:1.5fr .9fr; height:100vh}
+  .map-wrap{position:relative;background:var(--sea);display:flex;align-items:center;justify-content:center}
+  svg{width:100%;height:100%}
+  .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
+  .country:hover{fill:var(--hover)}
+  .label{font-size:12px;fill:#70828d;pointer-events:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  /* Right panel */
+  .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
+  .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+  .panel-title{font-weight:800}
+  .panel-count{opacity:.9}
+  .list{padding:12px;overflow:auto}
+  .uni{border:1px solid #eef2f5;border-radius:14px;padding:10px 12px;margin:8px 0}
+  .rank{display:inline-block;padding:2px 8px;border-radius:8px;font-weight:800;color:#fff;margin-bottom:4px}
+  .rank.t1{background:var(--t1)}
+  .rank.t2{background:var(--t2);color:#222}
+  .rank.t3{background:var(--t3)}
+  .uni-name{font-weight:700;color:var(--ink)}
+  .muted{color:var(--muted);font-size:12px}
+  @media (max-width: 900px){ .app{grid-template-columns:1fr; grid-template-rows: 55vh 1fr} .panel{border-left:none;border-top:1px solid #e9eef2} }
 </style>
 </head>
 <body>
 <div class="app">
-  <div id="map"></div>
+  <div class="map-wrap">
+    <svg id="map" aria-label="Europe map"></svg>
+  </div>
+
   <aside class="panel">
     <div class="panel-head">
-      <div id="panelTitle">Pick a country</div>
-      <div id="countBadge">0</div>
+      <div class="panel-title" id="panelTitle">Pick a country</div>
+      <div class="panel-count" id="panelCount">0 universities</div>
     </div>
     <div class="list" id="uniList"></div>
   </aside>
 </div>
 
 <script>
-// === Demo QS data (replace with Excel extract) ===
-const data = [
+// ====== DEMO DATA (replace with real QS extract later) ======
+const QS = [
   {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
   {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
   {country:'United Kingdom', euRank:4,  name:'University of Cambridge'},
-  {country:'United Kingdom', euRank:5,  name:'UCL'},
-  {country:'Switzerland', euRank:1,  name:'ETH Zurich'},
-  {country:'Switzerland', euRank:10, name:'EPFL'},
-  {country:'Germany', euRank:11, name:'Technical University of Munich'},
-  {country:'Germany', euRank:18, name:'LMU Munich'},
-  {country:'France', euRank:9, name:'Université PSL'},
-  {country:'Netherlands', euRank:15, name:'Delft University of Technology'},
-  {country:'Netherlands', euRank:17, name:'University of Amsterdam'},
-  {country:'Sweden', euRank:13, name:'Lund University'},
+  {country:'United Kingdom', euRank:5,  name:'UCL (University College London)'},
+  {country:'United Kingdom', euRank:8,  name:"King's College London"},
+  {country:'United Kingdom', euRank:12, name:'LSE – London School of Economics'},
+  {country:'Switzerland',    euRank:1,  name:'ETH Zurich'},
+  {country:'Switzerland',    euRank:10, name:'EPFL'},
+  {country:'Germany',        euRank:11, name:'Technical University of Munich (TUM)'},
+  {country:'Germany',        euRank:18, name:'LMU Munich'},
+  {country:'France',         euRank:9,  name:'Université PSL'},
+  {country:'Netherlands',    euRank:15, name:'Delft University of Technology'},
+  {country:'Netherlands',    euRank:17, name:'University of Amsterdam'},
+  {country:'Sweden',         euRank:13, name:'Lund University'},
 ];
 
-// group by country
-function universitiesByCountry(c){
-  return data.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
-}
-function tier(r){return r<=50?'t1':(r<=200?'t2':'t3');}
+const tier = r => r<=50 ? 't1' : (r<=200 ? 't2' : 't3');
+const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
 
-// === Map setup ===
-const map = L.map('map').setView([54,15],4);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-  attribution:'&copy; OpenStreetMap contributors'
-}).addTo(map);
+// ====== MAP (D3 + TopoJSON, Europe only) ======
+const svg = d3.select('#map');
+const g = svg.append('g'); // countries
+const gl = svg.append('g'); // labels
 
-// === Load Europe borders ===
-fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
-  .then(r=>r.json())
-  .then(topology=>{
-    const geo = topojson.feature(topology, topology.objects.countries);
-    // Only Europe countries (simplified by lon/lat bounding box)
-    const europe = geo.features.filter(f=>{
-      const [lon,lat] = f.properties.centroid || [0,0];
-      return lat>35 && lat<71 && lon>-25 && lon<45;
+// Projection & path sized to viewport
+function render(){
+  const w = svg.node().clientWidth;
+  const h = svg.node().clientHeight;
+
+  // Europe viewBox; Mercator centered on Europe
+  const projection = d3.geoMercator()
+    .center([15, 53])    // roughly Central Europe
+    .scale(Math.min(w, h) * 0.85) // responsive scale
+    .translate([w/2, h/2]);
+
+  const path = d3.geoPath(projection);
+
+  // Load high-res countries and draw Europe subset
+  d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology => {
+    const world = topojson.feature(topology, topology.objects.countries);
+    // Keep only European countries by bbox test (simple and effective)
+    const europe = world.features.filter(f=>{
+      const b = d3.geoBounds(f);
+      const lonMid = (b[0][0]+b[1][0])/2;
+      const latMid = (b[0][1]+b[1][1])/2;
+      return latMid>34 && latMid<72 && lonMid>-30 && lonMid<45;
     });
-    L.geoJSON(europe,{
-      style: f=>{
-        const cName=f.properties.name;
-        const has=universitiesByCountry(cName).length>0;
-        return {color:"#888",weight:1,fillColor:has?"#e5f7f1":"#f5f5f5",fillOpacity:1};
-      },
-      onEachFeature:(feature,layer)=>{
-        const name=feature.properties.name;
-        layer.bindTooltip(name,{permanent:true,direction:"center",className:"country-label"});
-        layer.on("click",()=>showCountry(name));
-        layer.on("mouseover",()=>layer.setStyle({fillColor:"#23B899"}));
-        layer.on("mouseout",()=>layer.setStyle({
-          fillColor:universitiesByCountry(name).length>0?"#e5f7f1":"#f5f5f5"
-        }));
-      }
-    }).addTo(map);
-  });
 
-// === Panel logic ===
-const titleEl=document.getElementById('panelTitle');
-const countEl=document.getElementById('countBadge');
-const listEl=document.getElementById('uniList');
-function showCountry(name){
-  const list=universitiesByCountry(name);
-  titleEl.textContent=name;
-  countEl.textContent=`${list.length}`;
-  listEl.innerHTML=list.map(u=>`
+    // Country name from Natural Earth properties (world-atlas preserves 'name')
+    // But some datasets store in 'properties.name' only after enriching; handle fallback:
+    const nameOf = f => (f.properties && (f.properties.name || f.properties.NAME || f.id)) || 'Unknown';
+
+    // JOIN
+    const countrySel = g.selectAll('path.country')
+      .data(europe, d => nameOf(d));
+
+    countrySel.join(
+      enter => enter.append('path')
+        .attr('class','country')
+        .attr('d', path)
+        .on('click', (evt, d)=> showCountry(nameOf(d)))
+        .on('mouseenter', function(){ d3.select(this).attr('fill', 'var(--hover)'); })
+        .on('mouseleave', function(){ d3.select(this).attr('fill', 'var(--land)'); })
+        .attr('fill', 'var(--land)')
+        .attr('stroke', 'var(--border)')
+        .attr('stroke-width', 1)
+    );
+
+    // Labels
+    const labels = gl.selectAll('text.label')
+      .data(europe, d => nameOf(d));
+
+    labels.join(
+      enter => enter.append('text')
+        .attr('class','label')
+        .text(d => nameOf(d).toUpperCase())
+        .attr('transform', d => {
+          const c = d3.geoPath(projection).centroid(d);
+          // Some islands may return NaN; guard it:
+          if (!isFinite(c[0]) || !isFinite(c[1])) return "translate(-9999,-9999)";
+          return `translate(${c[0]},${c[1]})`;
+        })
+        .attr('text-anchor','middle')
+    );
+  });
+}
+
+window.addEventListener('resize', ()=>render());
+render();
+
+// ====== RIGHT PANEL ======
+const titleEl = document.getElementById('panelTitle');
+const countEl  = document.getElementById('panelCount');
+const listEl   = document.getElementById('uniList');
+
+function showCountry(country){
+  const list = byCountry(country);
+  titleEl.textContent = country;
+  countEl.textContent = `${list.length} ${list.length===1?'university':'universities'}`;
+  listEl.innerHTML = list.length ? list.map(u=>`
     <div class="uni">
-      <div class="rank ${tier(u.euRank)}">#${u.euRank}</div>
+      <span class="rank ${tier(u.euRank)}">#${u.euRank}</span>
       <div class="uni-name">${u.name}</div>
       <div class="muted">Rank in Europe</div>
     </div>
-  `).join('') || `<div class="muted">No universities listed</div>`;
+  `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
+
+// Optional: default-open a popular country
+showCountry('United Kingdom');
 </script>
 </body>
 </html>
