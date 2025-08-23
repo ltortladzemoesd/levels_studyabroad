@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Levels Academy – Europe (Google-like Labels)</title>
+<title>Levels Academy – Europe (Google-like Labels, Inverse Zoom)</title>
 
 <script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
@@ -24,7 +24,7 @@
   .country:hover{fill:var(--hover)}
   .label{
     fill:#000; font-weight:800; text-transform:uppercase; letter-spacing:.3px; pointer-events:none;
-    paint-order: stroke; stroke:rgba(255,255,255,.9); stroke-width:3px; /* subtle halo for readability */
+    paint-order: stroke; stroke:rgba(255,255,255,.9); stroke-width:3px; /* subtle halo */
   }
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
@@ -52,7 +52,7 @@
 </div>
 
 <script>
-// ----- Demo QS data (swap with your Excel extract) -----
+// ----- Demo QS data (swap with Excel extract) -----
 const QS = [
   {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
   {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
@@ -78,8 +78,8 @@ const gCountries = svg.append('g');
 const gLabels = svg.append('g');
 
 let projection, path;
+let LABELS = [];
 
-// Limit map to Europe (and you asked to keep GEORGIA & TURKEY)
 const EUROPE = new Set([
   "Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Croatia","Czechia",
   "Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy",
@@ -89,33 +89,27 @@ const EUROPE = new Set([
   "Georgia","Turkey"
 ]);
 
-// Display name fixes
 const NAME_FIX = new Map([
   ["Bosnia and Herz.","Bosnia & Herzegovina"],
   ["Czechia","Czech Republic"],
   ["North Macedonia","N. Macedonia"]
 ]);
 
-// Big countries: always show at low zoom like Google
-const PRIORITY_ALWAYS = new Set([
-  "France","Spain","Germany","Italy","United Kingdom","Norway","Sweden","Finland","Poland","Turkey","Ukraine","Romania"
-]);
-
-// Micro-states: hide until high zoom
+const PRIORITY_LOW_ZOOM = new Set(["France","Spain","Germany","Italy","United Kingdom","Norway","Sweden","Finland","Poland","Turkey","Ukraine","Romania"]);
 const MICRO = new Set(["Andorra","Monaco","San Marino","Vatican","Liechtenstein","Luxembourg","Malta"]);
 
-// Text measuring (accurate width like Google’s dynamic label density)
+// precise text measurement (for collision)
 const measure = (() => {
   const c = document.createElement('canvas'); const ctx = c.getContext('2d');
   return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
 })();
 
-// Zoom + label logic
+// Zoom: **inverse font scaling** + decreasing density budget
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gCountries.attr('transform', t);
   gLabels.attr('transform', t);
-  updateLabels(k); // scale + density + collision per zoom
+  updateLabels(k); // shrink & thin out with zoom
 });
 svg.call(zoom);
 
@@ -140,16 +134,15 @@ function render(){
       .attr('fill','var(--land)')
       .attr('stroke','var(--border)');
 
-    // Precompute label anchors with polylabel (inside polygon)
+    // Label anchors with polylabel
     LABELS = features.map(f=>{
       const name = displayName(f);
       const geom = f.geometry;
-      const area = d3.geoArea(f); // used for priority
+      const area = d3.geoArea(f);
       let ll;
       try{
         if(geom.type === "Polygon") ll = polylabel(geom.coordinates, 1.0);
         else if(geom.type === "MultiPolygon"){
-          // use densest ring
           let best=null, bestA=-Infinity;
           for(const poly of geom.coordinates){
             const cand = polylabel(poly, 1.0);
@@ -162,7 +155,7 @@ function render(){
       return {name, feature:f, x, y, area};
     });
 
-    // Draw initial labels set; content will be updated by updateLabels()
+    // Draw label elements (content/visibility controlled by updateLabels)
     gLabels.selectAll('text.label')
       .data(LABELS, d=>d.name)
       .join('text')
@@ -179,42 +172,42 @@ function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Un
 function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
-// Global label cache
-let LABELS = [];
-
-/** Google-like label behavior:
- *  - font size scales with zoom
- *  - at each zoom we target a max label count (density budget)
- *  - priority = area + always-label boost; micro-states hidden until k>=5
- *  - greedy collision removal using actual measured text width
+/** Google-like country labels:
+ *  - font size **decreases** with zoom
+ *  - label density **decreases** with zoom
+ *  - low zoom prioritizes big countries; micro-states appear only when zoomed in
+ *  - collision removal with measured text width
  */
 function updateLabels(k){
-  const base = 11;                            // base px
-  const px = Math.round(base + (k-1)*2.4);    // scale with zoom
-  const budget = Math.round(14 + (k-1)*10);   // how many labels to allow at this zoom
+  // Inverse scaling: big at low zoom, smaller at high zoom
+  const base = 28;                            // px at zoom 1
+  const px = Math.max(10, Math.round(base - (k-1)*2.2));  // ↓ as k ↑
 
-  // rank candidates by priority
+  // Density budget: fewer labels as you zoom in
+  const baseBudget = 24;                      // labels at zoom 1
+  const budget = Math.max(6, Math.round(baseBudget - (k-1)*2)); // ↓ with k
+
+  // Priority score: area + (boost only at low zoom)
+  const boost = (k < 2.5) ? 1.0 : 0.2;
+
   const ranked = LABELS
-    .filter(d => (k>=5 || !MICRO.has(d.name))) // hide micro-states until zoomed in
-    .map(d => ({...d, score: d.area + (PRIORITY_ALWAYS.has(d.name) ? 1.0 : 0)}))
+    .filter(d => (k>=5 || !MICRO.has(d.name))) // micro-states only at high zoom
+    .map(d => ({...d, score: d.area + (PRIORITY_LOW_ZOOM.has(d.name) ? boost : 0)}))
     .sort((a,b)=> b.score - a.score);
 
-  // greedy collision packing
+  // Greedy packing with accurate text width
   const placed = [];
   for(const cand of ranked){
     if(placed.length >= budget) break;
 
-    // accurate width via canvas measure
     const text = cand.name.toUpperCase();
     const w = measure(text, px);
     const h = px;
     const x = cand.x - w/2, y = cand.y - h/2;
 
-    // check overlap with already placed
     const hit = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
     if(hit) continue;
 
-    // ensure anchor sits inside polygon
     const ll = projection.invert([cand.x, cand.y]);
     if(!ll || !d3.geoContains(cand.feature, ll)) continue;
 
@@ -222,14 +215,12 @@ function updateLabels(k){
   }
 
   const visible = new Set(placed.map(p=>p.name));
-
-  // apply visibility + size smoothly
-  const sel = gLabels.selectAll('text.label');
-  sel
+  gLabels.selectAll('text.label')
     .style('font-size', `${px}px`)
     .attr('display', d => visible.has(d.name) ? null : 'none');
 }
 
+// ----- Right panel -----
 function showCountry(country){
   const list = byCountry(country);
   document.getElementById('panelTitle').textContent = country;
