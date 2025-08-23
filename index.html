@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
 <script src="https://unpkg.com/@mapbox/polylabel@1.1.0/polylabel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@700&display=swap" rel="stylesheet"/>
 
 <style>
   :root{
@@ -23,7 +24,8 @@
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
   .label{
-    fill:#333333; font-weight:400; letter-spacing:.3px; pointer-events:none;
+    fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700;
+    letter-spacing:.3px; pointer-events:none;
   }
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
@@ -32,7 +34,7 @@
   .list{padding:12px;overflow:auto}
   .uni{border:1px solid #eef2f5;border-radius:14px;padding:10px 12px;margin:8px 0}
   .rank{display:inline-block;padding:2px 8px;border-radius:8px;font-weight:800;color:#fff;margin-bottom:4px}
-  .rank.t1{background:var(--t1)} .rank.t2{background:var(--t2);color:#222} .rank.t3{background:var(--t3)}
+  .rank.t1{background:#23B899} .rank.t2{background:#FDE200;color:#222} .rank.t3{background:#F66E6E}
   .uni-name{font-weight:700;color:var(--ink)} .muted{color:var(--muted);font-size:12px}
   @media (max-width:900px){ .app{grid-template-columns:1fr;grid-template-rows:55vh 1fr} .panel{border-left:none;border-top:1px solid #e9eef2} }
 </style>
