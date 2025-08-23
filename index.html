@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Levels Academy – Simple University Map</title>
+<title>Levels Academy – Clean University Map (Borders Only)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#f7f8f9; }
+  html, body { height:100%; margin:0; font-family:ui-sans-serif,system-ui,Arial; background:#f6f7f8; }
   #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
   header {
     padding:10px 14px; background:#2B445B; color:#fff;
@@ -19,11 +19,11 @@
   .control{ display:inline-flex; gap:8px; align-items:center; }
   .control label{ font-size:13px; opacity:.9 }
   .control select, .control input{
-    border:none; padding:6px 8px; border-radius:8px; outline:none; background:#f1f4f6;
+    border:none; padding:6px 8px; border-radius:8px; outline:none; background:#eef2f4;
   }
-  #map{ width:100%; height:100%; background:#eef2f4; }
+  #map{ width:100%; height:100%; background:#ffffff; }
 
-  /* Minimal legend */
+  /* Legend – minimal */
   .legend {
     position:absolute; bottom:12px; left:12px; background:white; padding:10px 12px;
     border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.08); font-size:13px;
@@ -39,10 +39,9 @@
   .leaflet-popup-content{ font-size:14px; }
   .pill{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eef4f3; font-size:12px; margin-left:6px; }
   .muted{ color:#667; font-size:13px; }
-  .cta{
-    display:inline-block; margin-top:8px; padding:8px 12px; border-radius:999px;
-    background:#23B899; color:#10201a; text-decoration:none; font-weight:600;
-  }
+
+  /* Border pane to ensure borders sit behind markers */
+  .leaflet-pane.border-pane { z-index: 200; }
 </style>
 </head>
 <body>
@@ -82,41 +81,50 @@
 </div>
 
 <script>
-/* ---------- DATA (demo subset; replace/extend later) ---------- */
+// ---------- DATA (demo subset; add globalRank when ready) ----------
 const universities = [
-  {rank:1,  name:"ETH Zurich – Swiss Federal Institute of Technology", country:"Switzerland", lat:47.3769, lng:8.5417, city:"Zurich"},
-  {rank:2,  name:"Imperial College London", country:"United Kingdom", lat:51.4988, lng:-0.1749, city:"London"},
-  {rank:3,  name:"University of Oxford", country:"United Kingdom", lat:51.7548, lng:-1.2544, city:"Oxford"},
-  {rank:4,  name:"University of Cambridge", country:"United Kingdom", lat:52.2043, lng:0.1149, city:"Cambridge"},
-  {rank:5,  name:"UCL (University College London)", country:"United Kingdom", lat:51.5246, lng:-0.1340, city:"London"},
-  {rank:9,  name:"Université PSL (Paris Sciences & Lettres)", country:"France", lat:48.8470, lng:2.3459, city:"Paris"},
-  {rank:10, name:"EPFL – École polytechnique fédérale de Lausanne", country:"Switzerland", lat:46.5191, lng:6.5668, city:"Lausanne"},
-  {rank:11, name:"Technical University of Munich (TUM)", country:"Germany", lat:48.1486, lng:11.5685, city:"Munich"},
-  {rank:13, name:"Lund University", country:"Sweden", lat:55.7047, lng:13.1910, city:"Lund"},
-  {rank:15, name:"Delft University of Technology", country:"Netherlands", lat:51.9998, lng:4.3739, city:"Delft"},
-  {rank:17, name:"University of Amsterdam", country:"Netherlands", lat:52.3557, lng:4.9557, city:"Amsterdam"},
-  {rank:18, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
+  {euRank:1,  globalRank:7,  name:"ETH Zurich – Swiss Federal Institute of Technology", country:"Switzerland", lat:47.3769, lng:8.5417, city:"Zurich"},
+  {euRank:2,  globalRank:2,  name:"Imperial College London", country:"United Kingdom", lat:51.4988, lng:-0.1749, city:"London"},
+  {euRank:3,  globalRank:3,  name:"University of Oxford", country:"United Kingdom", lat:51.7548, lng:-1.2544, city:"Oxford"},
+  {euRank:4,  globalRank:5,  name:"University of Cambridge", country:"United Kingdom", lat:52.2043, lng:0.1149, city:"Cambridge"},
+  {euRank:5,  globalRank:9,  name:"UCL (University College London)", country:"United Kingdom", lat:51.5246, lng:-0.1340, city:"London"},
+  {euRank:9,  globalRank:24, name:"Université PSL (Paris Sciences & Lettres)", country:"France", lat:48.8470, lng:2.3459, city:"Paris"},
+  {euRank:10, globalRank:27, name:"EPFL – École polytechnique fédérale de Lausanne", country:"Switzerland", lat:46.5191, lng:6.5668, city:"Lausanne"},
+  {euRank:11, globalRank:37, name:"Technical University of Munich (TUM)", country:"Germany", lat:48.1486, lng:11.5685, city:"Munich"},
+  {euRank:13, globalRank:85, name:"Lund University", country:"Sweden", lat:55.7047, lng:13.1910, city:"Lund"},
+  {euRank:15, globalRank:49, name:"Delft University of Technology", country:"Netherlands", lat:51.9998, lng:4.3739, city:"Delft"},
+  {euRank:17, globalRank:53, name:"University of Amsterdam", country:"Netherlands", lat:52.3557, lng:4.9557, city:"Amsterdam"},
+  {euRank:18, globalRank:59, name:"LMU Munich", country:"Germany", lat:48.1500, lng:11.5800, city:"Munich"}
 ];
 
-function tier(rank){ if(rank<=50) return "T1"; if(rank<=200) return "T2"; return "T3"; }
+// Tier & color
+function tier(euRank){ if(euRank<=50) return "T1"; if(euRank<=200) return "T2"; return "T3"; }
 function color(t){ return t==="T1"?"#23B899":(t==="T2"?"#FDE200":"#F66E6E"); }
 
-/* ---------- MAP (minimal basemap) ---------- */
-const map = L.map('map', { zoomControl:true, minZoom:3 }).setView([51.2, 10.4], 5);
+// ---------- MAP (no base tiles; add only borders as lines) ----------
+const map = L.map('map', { zoomControl:true, minZoom:3, worldCopyJump:true })
+  .setView([51.2, 10.4], 5);
 
-/* Carto Positron no-labels (very clean) */
-const base = L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-  { attribution: "&copy; OpenStreetMap &copy; CARTO" }
-).addTo(map);
+// Create a custom pane for borders so they sit below markers
+map.createPane('borderPane');
+map.getPane('borderPane').classList.add('border-pane');
 
-/* Optional faint label overlay (country names only feel) */
-const labels = L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
-  { opacity: 0.45, pane: "overlayPane" }
-).addTo(map);
+// Fetch Natural Earth country borders (admin-0). Only stroke, no fill.
+fetch('https://geojson.xyz/world/ne_110m_admin_0_countries.geojson')
+  .then(r=>r.json())
+  .then(geo=>{
+    L.geoJSON(geo, {
+      pane: 'borderPane',
+      style: {
+        color: '#C8D0D4',      // soft gray line
+        weight: 1.2,
+        opacity: 0.9,
+        fillOpacity: 0          // no fill – borders only
+      }
+    }).addTo(map);
+  });
 
-/* ---------- Controls data ---------- */
+// ---------- Controls ----------
 const countryEl = document.getElementById('country');
 const tierEl = document.getElementById('tier');
 const qEl = document.getElementById('q');
@@ -125,15 +133,22 @@ const qEl = document.getElementById('q');
   const opt = document.createElement('option'); opt.value=c; opt.textContent=c; countryEl.appendChild(opt);
 });
 
-/* ---------- Markers (clean dots) ---------- */
 let layer = L.layerGroup().addTo(map);
+
+function rankLine(u){
+  let line = `Rank #${u.euRank} in Europe`;
+  if (u.globalRank && Number.isFinite(u.globalRank)){
+    line += ` • Rank #${u.globalRank} Globally`;
+  }
+  return line;
+}
 
 function draw(){
   layer.clearLayers();
   const cf = countryEl.value, tf = tierEl.value, q = qEl.value.trim().toLowerCase();
 
   const filtered = universities.filter(u=>{
-    const t = tier(u.rank);
+    const t = tier(u.euRank);
     const okCountry = (cf==="ALL" || u.country===cf);
     const okTier = (tf==="ALL" || t===tf);
     const okSearch = !q || u.name.toLowerCase().includes(q);
@@ -141,22 +156,21 @@ function draw(){
   });
 
   filtered.forEach(u=>{
-    const t = tier(u.rank);
-    const m = L.circleMarker([u.lat,u.lng], {
+    const t = tier(u.euRank);
+    L.circleMarker([u.lat,u.lng], {
       radius: 7, weight: 1, color: "#1d2a31", fillColor: color(t), fillOpacity: 0.92
     }).bindPopup(`
       <div>
-        <div style="font-weight:700">${u.name} <span class="pill">#${u.rank}</span></div>
+        <div style="font-weight:700; margin-bottom:4px;">${rankLine(u)}</div>
+        <div>${u.name}</div>
         <div class="muted">${u.city}, ${u.country}</div>
-        <a class="cta" href="https://levelsacademy.ge/contact" target="_blank" rel="noopener">Apply via Levels Academy</a>
       </div>
-    `);
-    m.addTo(layer);
+    `).addTo(layer);
   });
 
   if (filtered.length){
     const b = L.latLngBounds(filtered.map(u=>[u.lat,u.lng]));
-    map.fitBounds(b.pad(0.15), { animate:false });
+    map.fitBounds(b.pad(0.18), { animate:false });
   }
 }
 countryEl.addEventListener('change', draw);
@@ -167,3 +181,4 @@ draw();
 </script>
 </body>
 </html>
+
