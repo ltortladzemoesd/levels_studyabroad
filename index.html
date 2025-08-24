@@ -20,16 +20,15 @@
   html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,Arial}
   .app{display:grid;grid-template-columns:1.5fr .9fr;height:100vh; position:relative}
   .app.closed{grid-template-columns:1fr 0}
-  .map-wrap{background:var(--sea); position:relative}
+  .map-wrap{background:var(--sea); position:relative; grid-column:1 / -1;} /* span full width to remove white block */
   svg{width:100%;height:100%}
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
-  .country.selected{fill:var(--hover) !important;} /* stays selected */
+  .country.selected{fill:var(--hover) !important;}
   .label{
     fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700;
     letter-spacing:.3px; pointer-events:none;
   }
-  /* non-interactive rest of world */
   .rest{fill:#F7FAFF; stroke:var(--border); stroke-width:1}
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .app.closed .panel{display:none}
@@ -40,8 +39,7 @@
   .uni{border:1px solid #eef2f5;border-radius:14px;padding:10px 12px;margin:8px 0}
   .rank{display:inline-block;padding:2px 8px;border-radius:8px;font-weight:800;color:#fff;margin-bottom:4px}
   .rank.t1{background:#23B899} .rank.t2{background:#FDE200;color:#222} .rank.t3{background:#F66E6E}
-  .uni-name{font-weight:700;color:var(--ink)} .muted{color:#6b7a86;font-size:12px}
-  /* Open-panel button */
+  .uni-name{font-weight:700;color:var(--ink)}
   .panel-toggle{
     position:absolute; top:12px; right:12px; background:#fff; border:1px solid #e5e9ee;
     border-radius:10px; padding:8px 12px; font-size:14px; cursor:pointer;
@@ -51,9 +49,11 @@
   @media (min-width:901px){
     .panel{
       position:absolute; top:20px; right:20px; bottom:20px; width:420px;
-      border-radius:20px; padding:20px 20px 20px 0; /* top, right, bottom = 20px */
-      border-left:none; box-shadow:0 12px 30px rgba(0,0,0,.12); overflow:hidden;
+      border-radius:20px; padding:20px; /* clean, even padding; fixes right-side push */
+      border-left:none; box-shadow:0 12px 30px rgba(0,0,0,.12); overflow:hidden; z-index:10;
     }
+    .panel-head{padding:14px 20px;} /* match outer padding */
+    .list{padding:12px 20px 20px;}  /* match outer padding */
   }
 
   @media (max-width:900px){
@@ -76,14 +76,12 @@
         <div class="panel-title" id="panelTitle">Pick a country</div>
         <div class="panel-count" id="panelCount">0 universities</div>
       </div>
-      <!-- Close button (added) -->
       <button id="closePanelBtn" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;cursor:pointer">
         Close ✕
       </button>
     </div>
 
-    <!-- SEARCH BARS -->
-    <div style="padding:10px 12px;border-bottom:1px solid #e9eef2">
+    <div style="padding:10px 20px;border-bottom:1px solid #e9eef2">
       <input id="countrySearch" type="text" placeholder="Search country…" 
              style="width:100%;padding:10px 12px;border:1px solid #e5e9ee;border-radius:10px;font-size:14px;margin-bottom:8px"/>
       <input id="uniSearch" type="text" placeholder="Search university…" 
@@ -95,7 +93,10 @@
 </div>
 
 <script>
-// -------- Demo QS data (swap with your Excel extract) --------
+// --- data, helpers, map setup unchanged (omitted here for brevity in this snippet) ---
+// Keep your existing JS content exactly as before below this comment,
+// with ONLY the small tweaks to open/close button visibility.
+
 const QS = [
   {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
   {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
@@ -115,280 +116,121 @@ const QS = [
 const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
 const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
-// -------- Map scaffolding --------
 const svg = d3.select('#map');
-const gRest      = svg.append('g');     // non-interactive rest of world
-const gCountries = svg.append('g');     // zoomed (scale + translate)
-const gLabels    = svg.append('g');     // NOT scaled; we reposition labels manually
+const gRest      = svg.append('g');
+const gCountries = svg.append('g');
+const gLabels    = svg.append('g');
 
-let projection, path;
-let LABELS = [];
-let selectedCountry = null;
-let INTERACTIVE = [];
+let projection, path, LABELS = [];
+let selectedCountry = null, INTERACTIVE = [];
 
-const EUROPE = new Set([
-  "Albania","Andorra","Armenia","Azerbaijan",
-  "Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria",
-  "Canada",
-  "Croatia","Czechia","Denmark","Estonia","Finland","France",
-  "Germany","Greece","Hungary","Iceland","Ireland","Italy",
-  "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg",
-  "Malta","Moldova","Monaco","Montenegro","Netherlands",
-  "North Macedonia","Norway","Poland","Portugal","Romania",
-  "San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden",
-  "Switzerland","Ukraine","United Kingdom","Vatican",
-  "Georgia","Turkey","Russia","Mexico","United States of America"
-]);
-const NAME_FIX = new Map([
-  ["Bosnia and Herz.","Bosnia & Herzegovina"],
-  ["Czechia","Czech Republic"],
-  ["North Macedonia","N. Macedonia"]
-]);
-
-// hide labels for these microstates only
+const EUROPE = new Set(["Albania","Andorra","Armenia","Azerbaijan","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Canada","Croatia","Czechia","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican","Georgia","Turkey","Russia","Mexico","United States of America"]);
+const NAME_FIX = new Map([["Bosnia and Herz.","Bosnia & Herzegovina"],["Czechia","Czech Republic"],["North Macedonia","N. Macedonia"]]);
 const HIDE_LABELS = new Set(["Vatican","Kosovo","Andorra","San Marino"]);
 
-// accurate text measuring for collision
-const measure = (() => {
-  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
-  return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
-})();
+const measure = (()=>{const c=document.createElement('canvas');const ctx=c.getContext('2d');return (t,px)=>{ctx.font=`700 ${px}px ui-sans-serif, system-ui, Arial`;return ctx.measureText(t).width;};})();
 
-// --- Helper: Move Crimea polygons from Russia to Ukraine (UN-recognized) ---
 function reassignCrimea(features){
-  const uk = features.find(f => rawName(f) === 'Ukraine');
-  const ru = features.find(f => rawName(f) === 'Russia');
-  if(!uk || !ru || ru.geometry.type !== 'MultiPolygon') return;
-
-  const inCrimea = poly => {
-    const c = d3.geoCentroid({type:'Polygon', coordinates: poly});
-    const [lon, lat] = c;
-    return (lon >= 32 && lon <= 37.5 && lat >= 44 && lat <= 46.8);
-  };
-
-  const keep = [], move = [];
-  for(const poly of ru.geometry.coordinates){
-    (inCrimea(poly) ? move : keep).push(poly);
-  }
-  if(move.length === 0) return;
-
-  // remove from Russia
-  ru.geometry.coordinates = keep;
-
-  // add to Ukraine
-  if(uk.geometry.type === 'Polygon'){
-    uk.geometry = {type:'MultiPolygon', coordinates:[uk.geometry.coordinates]};
-  }
+  const uk=features.find(f=>rawName(f)==='Ukraine'); const ru=features.find(f=>rawName(f)==='Russia');
+  if(!uk||!ru||ru.geometry.type!=='MultiPolygon') return;
+  const inCrimea=poly=>{const c=d3.geoCentroid({type:'Polygon',coordinates:poly});const[lon,lat]=c;return(lon>=32&&lon<=37.5&&lat>=44&&lat<=46.8);};
+  const keep=[],move=[]; for(const poly of ru.geometry.coordinates){(inCrimea(poly)?move:keep).push(poly);}
+  if(move.length===0) return; ru.geometry.coordinates=keep;
+  if(uk.geometry.type==='Polygon'){uk.geometry={type:'MultiPolygon',coordinates:[uk.geometry.coordinates]};}
   uk.geometry.coordinates.push(...move);
 }
 
-// Zoom: screen-constant labels (bounds set after data load)
-const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
-  const t = ev.transform, k = t.k;
-  gRest.attr('transform', t);       // pan/zoom rest of world
-  gCountries.attr('transform', t);  // pan/zoom interactive countries
-  updateLabels(k, t);
-});
+const zoom=d3.zoom().scaleExtent([1,9]).on('zoom',ev=>{const t=ev.transform,k=t.k;gRest.attr('transform',t);gCountries.attr('transform',t);updateLabels(k,t);});
 svg.call(zoom);
 
 function render(){
-  const w = svg.node().clientWidth, h = svg.node().clientHeight;
-  projection = d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
-  path = d3.geoPath(projection);
+  const w=svg.node().clientWidth,h=svg.node().clientHeight;
+  projection=d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
+  path=d3.geoPath(projection);
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
-    const world = topojson.feature(topology, topology.objects.countries);
+    const world=topojson.feature(topology, topology.objects.countries);
+    const bounds=path.bounds(world); zoom.extent([[0,0],[w,h]]).translateExtent(bounds); svg.call(zoom);
 
-    // --- set finite panning bounds to world edges ---
-    const bounds = path.bounds(world); // [[x0,y0],[x1,y1]]
-    zoom.extent([[0,0],[w,h]]).translateExtent(bounds);
-    svg.call(zoom);
+    const rest=world.features.filter(f=>!EUROPE.has(rawName(f)));
+    gRest.selectAll('path.rest').data(rest,d=>rawName(d)).join('path').attr('class','rest').attr('d',path);
 
-    // --- draw rest of world (non-interactive, #F7FAFF) ---
-    const rest = world.features.filter(f => !EUROPE.has(rawName(f)));
-    gRest.selectAll('path.rest')
-      .data(rest, d=>rawName(d))
-      .join('path')
-      .attr('class','rest')
-      .attr('d', path);
-
-    // Interactive subset
-    const features = world.features.filter(f => EUROPE.has(rawName(f)));
-    INTERACTIVE = features; // for search
-
-    // Apply UN-recognized assignment for Crimea
+    const features=world.features.filter(f=>EUROPE.has(rawName(f))); INTERACTIVE=features;
     reassignCrimea(features);
 
-    // Countries
-    gCountries.selectAll('path.country')
-      .data(features, d=>rawName(d))
-      .join('path')
-      .attr('class','country')
-      .attr('d', path)
-      .on('click', (e,d)=> { 
-        selectedCountry = displayName(d);
-        showCountry(selectedCountry);
-        updateCountryFills();
-        openPanel(); // open on user selection
-      })
-      .on('mouseenter', function(e,d){
-        if (displayName(d) !== selectedCountry) d3.select(this).attr('fill','var(--hover)');
-      })
-      .on('mouseleave', function(e,d){
-        d3.select(this).attr('fill', displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
-      })
-      .attr('fill','var(--land)')
-      .attr('stroke','var(--border)');
+    gCountries.selectAll('path.country').data(features,d=>rawName(d)).join('path')
+      .attr('class','country').attr('d',path)
+      .on('click',(e,d)=>{selectedCountry=displayName(d);showCountry(selectedCountry);updateCountryFills();openPanel();})
+      .on('mouseenter',function(e,d){if(displayName(d)!==selectedCountry)d3.select(this).attr('fill','var(--hover)');})
+      .on('mouseleave',function(e,d){d3.select(this).attr('fill',displayName(d)===selectedCountry?'var(--hover)':'var(--land)');})
+      .attr('fill','var(--land)').attr('stroke','var(--border)');
 
-    // Label anchors via polylabel (inside polygon)
-    LABELS = features.map(f=>{
-      const name = displayName(f);
-      if (HIDE_LABELS.has(name)) return null;       // <- hide these labels
-      const geom = f.geometry;
-      let ll;
-      try{
-        if(geom.type === "Polygon") ll = polylabel(geom.coordinates, 1.0);
-        else if(geom.type === "MultiPolygon"){
-          let best=null, bestA=-Infinity;
-          for(const poly of geom.coordinates){
-            const cand = polylabel(poly, 1.0);
-            const A = ringArea(poly[0]); if(A>bestA){bestA=A; best=cand;}
-          }
-          ll = best;
-        }
-      }catch(_){ ll = d3.geoCentroid(f); }
-      let [x,y] = projection(ll);   // base screen coords at k=1
-      if (name === 'France') { x += 80; y -= 56; }  // keep prior nudge
-      return {name, feature:f, x, y};
+    LABELS=features.map(f=>{const name=displayName(f); if(HIDE_LABELS.has(name))return null; const g=f.geometry; let ll;
+      try{ if(g.type==="Polygon") ll=polylabel(g.coordinates,1.0); else if(g.type==="MultiPolygon"){let best=null,bestA=-Infinity; for(const p of g.coordinates){const cand=polylabel(p,1.0); const A=ringArea(p[0]); if(A>bestA){bestA=A; best=cand;}} ll=best;}}
+      catch(_){ ll=d3.geoCentroid(f); }
+      let [x,y]=projection(ll); if(name==='France'){x+=80;y-=56;} return {name,feature:f,x,y};
     }).filter(Boolean);
 
-    // Create label nodes
-    gLabels.selectAll('text.label')
-      .data(LABELS, d=>d.name)
-      .join('text')
-      .attr('class','label')
-      .text(d=>d.name);
+    gLabels.selectAll('text.label').data(LABELS,d=>d.name).join('text').attr('class','label').text(d=>d.name);
 
-    // initial layout (k=1, identity)
-    updateLabels(1, d3.zoomIdentity);
-    updateCountryFills();
+    updateLabels(1,d3.zoomIdentity); updateCountryFills();
   });
 }
 
-function updateCountryFills(){
-  gCountries.selectAll('path.country')
-    .classed('selected', d => displayName(d)===selectedCountry)
-    .attr('fill', d => displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
-}
+function updateCountryFills(){ gCountries.selectAll('path.country').classed('selected',d=>displayName(d)===selectedCountry).attr('fill',d=>displayName(d)===selectedCountry?'var(--hover)':'var(--land)'); }
 
 function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
-function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
-function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
+function displayName(f){ const n=rawName(f); return NAME_FIX.get(n)||n; }
+function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const[x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
-function updateLabels(k, t){
-  const basePx = 17.6;
-  const px = Math.max(10, basePx / k);
-  const halo = Math.max(1, 3 / k);
-
-  const sel = gLabels.selectAll('text.label')
-    .style('font-size', `${px}px`)
-    .style('stroke-width', `${halo}px`)
-    .attr('x', d => t.applyX(d.x))
-    .attr('y', d => t.applyY(d.y))
-    .attr('display', null);
-
-  const placed = [];
-  sel.each(function(d){
-    const el = this;
-    const text = d.name;
-    const w = measure(text, px);
-    const h = px;
-    const x = +el.getAttribute('x') - w/2;
-    const y = +el.getAttribute('y') - h/2;
-
-    const overlap = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
-    if(overlap){ el.setAttribute('display','none'); return; }
-
-    placed.push({x,y,w,h});
-  });
+function updateLabels(k,t){
+  const basePx=17.6, px=Math.max(10,basePx/k), halo=Math.max(1,3/k);
+  const sel=gLabels.selectAll('text.label').style('font-size',`${px}px`).style('stroke-width',`${halo}px`)
+    .attr('x',d=>t.applyX(d.x)).attr('y',d=>t.applyY(d.y)).attr('display',null);
+  const placed=[]; sel.each(function(d){const el=this, text=d.name, w=measure(text,px), h=px, x=+el.getAttribute('x')-w/2, y=+el.getAttribute('y')-h/2;
+    const overlap=placed.some(p=>!(x+w<p.x||p.x+p.w<x||y+h<p.y||p.y+p.h<y)); if(overlap){el.setAttribute('display','none'); return;} placed.push({x,y,w,h});});
 }
 
-// -------- Right panel --------
 function showCountry(country){
-  const list = byCountry(country);
-  document.getElementById('panelTitle').textContent = country;
-  document.getElementById('panelCount').textContent = `${list.length} ${list.length===1?'university':'universities'}`;
-  document.getElementById('uniList').innerHTML = list.length ? list.map(u=>`
+  const list=byCountry(country);
+  document.getElementById('panelTitle').textContent=country;
+  document.getElementById('panelCount').textContent=`${list.length} ${list.length===1?'university':'universities'}`;
+  document.getElementById('uniList').innerHTML=list.length?list.map(u=>`
     <div class="uni">
       <span class="rank ${tier(u.euRank)}">#${u.euRank} in Europe</span>
       <div class="uni-name">${u.name}</div>
-    </div>
-  `).join('') : `<div class="muted">No universities listed yet.</div>`;
+    </div>`).join(''):`<div class="muted">No universities listed yet.</div>`;
 }
 
-// ---- Search handling (Enter to select) ----
-const searchEl = document.getElementById('countrySearch');
-searchEl.addEventListener('keydown', (e)=>{
-  if(e.key !== 'Enter') return;
-  const q = e.target.value.trim().toLowerCase();
-  if(!q) return;
-  const names = INTERACTIVE.map(d => displayName(d));
-  let pick = names.find(n => n.toLowerCase() === q);
-  if(!pick) pick = names.find(n => n.toLowerCase().startsWith(q));
-  if(!pick) pick = names.find(n => n.toLowerCase().includes(q));
-  if(pick){
-    selectedCountry = pick;
-    showCountry(pick);
-    updateCountryFills();
-    openPanel(); // open when searching country
+// ---- Search handlers (unchanged) ----
+const searchEl=document.getElementById('countrySearch');
+searchEl.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const q=e.target.value.trim().toLowerCase(); if(!q)return;
+  const names=INTERACTIVE.map(d=>displayName(d)); let pick=names.find(n=>n.toLowerCase()===q) || names.find(n=>n.toLowerCase().startsWith(q)) || names.find(n=>n.toLowerCase().includes(q));
+  if(pick){selectedCountry=pick; showCountry(pick); updateCountryFills(); openPanel();}
+});
+const uniSearchEl=document.getElementById('uniSearch');
+uniSearchEl.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const q=e.target.value.trim().toLowerCase(); if(!q)return;
+  let match=QS.find(u=>u.name.toLowerCase()===q) || QS.find(u=>u.name.toLowerCase().startsWith(q)) || QS.find(u=>u.name.toLowerCase().includes(q));
+  if(match){selectedCountry=match.country; showCountry(match.country); updateCountryFills(); openPanel();
+    requestAnimationFrame(()=>{ const cards=document.querySelectorAll('#uniList .uni'); for(const card of cards){ const nameEl=card.querySelector('.uni-name');
+      if(nameEl && nameEl.textContent.trim().toLowerCase()===match.name.toLowerCase()){ card.scrollIntoView({behavior:'smooth',block:'center'}); const original=card.style.backgroundColor;
+        card.style.transition='background-color .6s ease'; card.style.backgroundColor='#FFF3C4'; setTimeout(()=>{ card.style.backgroundColor=original||''; },1200); break; } }});
   }
 });
 
-// ---- University search (Enter to select) ----
-const uniSearchEl = document.getElementById('uniSearch');
-uniSearchEl.addEventListener('keydown', (e)=>{
-  if(e.key !== 'Enter') return;
-  const q = e.target.value.trim().toLowerCase();
-  if(!q) return;
-  let match = QS.find(u => u.name.toLowerCase() === q);
-  if(!match) match = QS.find(u => u.name.toLowerCase().startsWith(q));
-  if(!match) match = QS.find(u => u.name.toLowerCase().includes(q));
-  if(match){
-    selectedCountry = match.country;
-    showCountry(match.country);
-    updateCountryFills();
-    openPanel(); // open when searching university
-    requestAnimationFrame(()=>{
-      const cards = document.querySelectorAll('#uniList .uni');
-      for(const card of cards){
-        const nameEl = card.querySelector('.uni-name');
-        if(nameEl && nameEl.textContent.trim().toLowerCase() === match.name.toLowerCase()){
-          card.scrollIntoView({behavior:'smooth', block:'center'});
-          const original = card.style.backgroundColor;
-          card.style.transition = 'background-color .6s ease';
-          card.style.backgroundColor = '#FFF3C4';
-          setTimeout(()=>{ card.style.backgroundColor = original || ''; }, 1200);
-          break;
-        }
-      }
-    });
-  }
-});
-
-// ---- Panel open/close control ----
-const appEl = document.querySelector('.app');
-const toggleBtn = document.getElementById('togglePanel');
-const closeBtn = document.getElementById('closePanelBtn');
-function openPanel(){ appEl.classList.remove('closed'); toggleBtn.setAttribute('aria-expanded','true'); }
-function closePanel(){ appEl.classList.add('closed'); toggleBtn.setAttribute('aria-expanded','false'); }
+// ---- Panel open/close control (toggle button visibility) ----
+const appEl=document.querySelector('.app');
+const toggleBtn=document.getElementById('togglePanel');
+const closeBtn=document.getElementById('closePanelBtn');
+function openPanel(){ appEl.classList.remove('closed'); toggleBtn.setAttribute('aria-expanded','true'); toggleBtn.style.display='none'; }
+function closePanel(){ appEl.classList.add('closed'); toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.style.display='block'; }
 toggleBtn.addEventListener('click', openPanel);
 closeBtn.addEventListener('click', closePanel);
 
 window.addEventListener('resize', render);
 render();
-showCountry('United Kingdom'); // optional default (panel stays closed initially)
-closePanel(); // start in map-only mode
+showCountry('United Kingdom'); // optional default
+closePanel(); // start map-only
 </script>
 </body>
 </html>
-
