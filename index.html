@@ -51,6 +51,13 @@
       <div class="panel-title" id="panelTitle">Pick a country</div>
       <div class="panel-count" id="panelCount">0 universities</div>
     </div>
+
+    <!-- SEARCH BAR (added) -->
+    <div style="padding:10px 12px;border-bottom:1px solid #e9eef2">
+      <input id="countrySearch" type="text" placeholder="Search country…" 
+             style="width:100%;padding:10px 12px;border:1px solid #e5e9ee;border-radius:10px;font-size:14px"/>
+    </div>
+
     <div class="list" id="uniList"></div>
   </aside>
 </div>
@@ -85,6 +92,7 @@ const gLabels    = svg.append('g');     // NOT scaled; we reposition labels manu
 let projection, path;
 let LABELS = [];
 let selectedCountry = null;
+let INTERACTIVE = [];
 
 const EUROPE = new Set([
   "Albania","Andorra","Armenia","Azerbaijan",
@@ -169,6 +177,7 @@ function render(){
 
     // Interactive subset
     const features = world.features.filter(f => EUROPE.has(rawName(f)));
+    INTERACTIVE = features; // for search
 
     // Apply UN-recognized assignment for Crimea
     reassignCrimea(features);
@@ -280,9 +289,30 @@ function showCountry(country){
   `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
 
+// ---- Search handling (Enter to select) ----
+const searchEl = document.getElementById('countrySearch');
+searchEl.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter') return;
+  const q = e.target.value.trim().toLowerCase();
+  if(!q) return;
+  const names = INTERACTIVE.map(d => displayName(d));
+  // exact match
+  let pick = names.find(n => n.toLowerCase() === q);
+  // startswith
+  if(!pick) pick = names.find(n => n.toLowerCase().startsWith(q));
+  // includes
+  if(!pick) pick = names.find(n => n.toLowerCase().includes(q));
+  if(pick){
+    selectedCountry = pick;
+    showCountry(pick);
+    updateCountryFills();
+  }
+});
+
 window.addEventListener('resize', render);
 render();
 showCountry('United Kingdom'); // optional default
 </script>
 </body>
 </html>
+
