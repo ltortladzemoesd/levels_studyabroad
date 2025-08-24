@@ -75,8 +75,9 @@ const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
 // -------- Map scaffolding --------
 const svg = d3.select('#map');
-const gCountries = svg.append('g');     // zoomed (scale + translate)
-const gLabels = svg.append('g');        // NOT scaled; we reposition labels manually
+const gLand      = svg.append('g');     // base land layer (fixes holes like North Macedonia)
+const gCountries = svg.append('g');     // countries (zoomed)
+const gLabels    = svg.append('g');     // labels (screen-constant)
 
 let projection, path;
 let LABELS = [];
@@ -95,7 +96,7 @@ const NAME_FIX = new Map([
   ["North Macedonia","N. Macedonia"]
 ]);
 
-// hide labels for these microstates only
+// hide labels for these microstates (per previous step)
 const HIDE_LABELS = new Set(["Vatican","Kosovo","Andorra","San Marino"]);
 
 // accurate text measuring for collision
@@ -104,7 +105,7 @@ const measure = (() => {
   return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
 })();
 
-// Zoom: screen-constant labels
+// Zoom (countries scale; labels screen-constant)
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gCountries.attr('transform', t);
@@ -117,11 +118,27 @@ function render(){
   projection = d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
   path = d3.geoPath(projection);
 
-  d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
-    const world = topojson.feature(topology, topology.objects.countries);
+  const COUNTRIES_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json";
+  const LAND_URL      = "https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json";
+
+  Promise.all([d3.json(COUNTRIES_URL), d3.json(LAND_URL)]).then(([topoCountries, topoLand])=>{
+    // base land layer (ensures areas like North Macedonia aren't blue if a country polygon is missing)
+    const land = topojson.feature(topoLand, topoLand.objects.land);
+    gLand.selectAll('path.land')
+      .data([land])
+      .join('path')
+      .attr('class','land')
+      .attr('d', path)
+      .attr('fill','var(--land)');
+
+    // countries
+    const world = topojson.feature(topoCountries, topoCountries.objects.countries);
     const features = world.features.filter(f => EUROPE.has(rawName(f)));
 
-    // Countries
+    // ---- Crimea → Ukraine (remove from Russia, add to Ukraine) ----
+    reassignCrimea(features);
+
+    // draw countries
     gCountries.selectAll('path.country')
       .data(features, d=>rawName(d))
       .join('path')
@@ -136,7 +153,7 @@ function render(){
     // Label anchors via polylabel (inside polygon)
     LABELS = features.map(f=>{
       const name = displayName(f);
-      if (HIDE_LABELS.has(name)) return null;       // <- hide these labels
+      if (HIDE_LABELS.has(name)) return null;
       const geom = f.geometry;
       let ll;
       try{
@@ -150,8 +167,8 @@ function render(){
           ll = best;
         }
       }catch(_){ ll = d3.geoCentroid(f); }
-      let [x,y] = projection(ll);   // base screen coords at k=1
-      if (name === 'France') { x += 80; y -= 56; }  // ← right and 3× more up
+      let [x,y] = projection(ll);
+      if (name === 'France') { x += 80; y -= 56; }  // previously requested nudge
       return {name, feature:f, x, y};
     }).filter(Boolean);
 
@@ -162,14 +179,41 @@ function render(){
       .attr('class','label')
       .text(d=>d.name);
 
-    // initial layout (k=1, identity)
-    updateLabels(1, d3.zoomIdentity);
+    updateLabels(1, d3.zoomIdentity); // initial layout
   });
 }
 
 function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
 function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
+
+// Move Crimea polygons from Russia to Ukraine
+function reassignCrimea(features){
+  const uk = features.find(f => rawName(f) === 'Ukraine');
+  const ru = features.find(f => rawName(f) === 'Russia');
+  if(!uk || !ru || ru.geometry.type !== 'MultiPolygon') return;
+
+  const inCrimea = poly => {
+    const c = d3.geoCentroid({type:'Polygon', coordinates: poly});
+    const [lon, lat] = c;
+    return (lon >= 32 && lon <= 37.5 && lat >= 44 && lat <= 46.8);
+  };
+
+  const keep = [], move = [];
+  for(const poly of ru.geometry.coordinates){
+    (inCrimea(poly) ? move : keep).push(poly);
+  }
+  if(move.length === 0) return;
+
+  // remove from Russia
+  ru.geometry.coordinates = keep;
+
+  // add to Ukraine
+  if(uk.geometry.type === 'Polygon'){
+    uk.geometry = {type:'MultiPolygon', coordinates:[uk.geometry.coordinates]};
+  }
+  uk.geometry.coordinates.push(...move);
+}
 
 function updateLabels(k, t){
   const basePx = 17.6;
