@@ -12,7 +12,7 @@
 
 <style>
   :root{
-    --sea:#BBE0F9; --land:#ffffff; --border:#cfd6dc; --hover:#ADE2D7;
+    --sea:#BBE0F9; --land:#ffffff; --border:#cfd6dc; --hover:#23B899;
     --brand:#2B445B; --ink:#0f1f29; --muted:#6b7a86;
     --t1:#23B899; --t2:#FDE200; --t3:#F66E6E;
   }
@@ -201,7 +201,7 @@ function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
 function updateLabels(k, t){
-  const basePx = 17.6, px = Math.max(10, basePx / k), halo = Math.max(1, 3 / k);
+  const basePx = 11, px = Math.max(10, basePx / k), halo = Math.max(1, 3 / k);
   const sel = gLabels.selectAll('text.label')
     .style('font-size', `${px}px`).style('stroke-width', `${halo}px`)
     .attr('x', d => t.applyX(d.x)).attr('y', d => t.applyY(d.y)).attr('display', null);
