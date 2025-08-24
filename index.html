@@ -152,7 +152,7 @@ function reassignCrimea(features){
   uk.geometry.coordinates.push(...move);
 }
 
-// Zoom: screen-constant labels + bounded pan
+// Zoom: screen-constant labels (bounds set after data load)
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gRest.attr('transform', t);       // pan/zoom rest of world
@@ -166,12 +166,13 @@ function render(){
   projection = d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
   path = d3.geoPath(projection);
 
-  // ---- add finite panning bounds (map "ends") ----
-  zoom.extent([[0,0],[w,h]]).translateExtent([[0,0],[w,h]]);
-  svg.call(zoom);
-
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
+
+    // --- set finite panning bounds to world edges ---
+    const bounds = path.bounds(world); // [[x0,y0],[x1,y1]]
+    zoom.extent([[0,0],[w,h]]).translateExtent(bounds);
+    svg.call(zoom);
 
     // --- draw rest of world (non-interactive, #F7FAFF) ---
     const rest = world.features.filter(f => !EUROPE.has(rawName(f)));
