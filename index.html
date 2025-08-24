@@ -152,7 +152,7 @@ function reassignCrimea(features){
   uk.geometry.coordinates.push(...move);
 }
 
-// Zoom: screen-constant labels
+// Zoom: screen-constant labels + bounded pan
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gRest.attr('transform', t);       // pan/zoom rest of world
@@ -165,6 +165,10 @@ function render(){
   const w = svg.node().clientWidth, h = svg.node().clientHeight;
   projection = d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
   path = d3.geoPath(projection);
+
+  // ---- add finite panning bounds (map "ends") ----
+  zoom.extent([[0,0],[w,h]]).translateExtent([[0,0],[w,h]]);
+  svg.call(zoom);
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
@@ -286,7 +290,6 @@ function showCountry(country){
     <div class="uni">
       <span class="rank ${tier(u.euRank)}">#${u.euRank} in Europe</span>
       <div class="uni-name">${u.name}</div>
-      <div class="muted">Rank in Europe</div>
     </div>
   `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
