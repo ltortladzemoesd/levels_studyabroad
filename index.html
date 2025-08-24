@@ -87,7 +87,7 @@ const EUROPE = new Set([
   "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro",
   "Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia",
   "Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican",
-  "Georgia","Turkey","Russia"   // <-- Added Russia
+  "Georgia","Turkey","Russia"   // <-- Added Russia earlier
 ]);
 const NAME_FIX = new Map([
   ["Bosnia and Herz.","Bosnia & Herzegovina"],
@@ -103,6 +103,34 @@ const measure = (() => {
   const c = document.createElement('canvas'); const ctx = c.getContext('2d');
   return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
 })();
+
+// --- Helper: Move Crimea polygons from Russia to Ukraine (UN-recognized) ---
+function reassignCrimea(features){
+  const uk = features.find(f => rawName(f) === 'Ukraine');
+  const ru = features.find(f => rawName(f) === 'Russia');
+  if(!uk || !ru || ru.geometry.type !== 'MultiPolygon') return;
+
+  const inCrimea = poly => {
+    const c = d3.geoCentroid({type:'Polygon', coordinates: poly});
+    const [lon, lat] = c;
+    return (lon >= 32 && lon <= 37.5 && lat >= 44 && lat <= 46.8);
+  };
+
+  const keep = [], move = [];
+  for(const poly of ru.geometry.coordinates){
+    (inCrimea(poly) ? move : keep).push(poly);
+  }
+  if(move.length === 0) return;
+
+  // remove from Russia
+  ru.geometry.coordinates = keep;
+
+  // add to Ukraine
+  if(uk.geometry.type === 'Polygon'){
+    uk.geometry = {type:'MultiPolygon', coordinates:[uk.geometry.coordinates]};
+  }
+  uk.geometry.coordinates.push(...move);
+}
 
 // Zoom: screen-constant labels
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
@@ -120,6 +148,9 @@ function render(){
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
     const features = world.features.filter(f => EUROPE.has(rawName(f)));
+
+    // Apply UN-recognized assignment for Crimea
+    reassignCrimea(features);
 
     // Countries
     gCountries.selectAll('path.country')
