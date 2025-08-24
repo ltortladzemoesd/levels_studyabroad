@@ -284,7 +284,7 @@ function showCountry(country){
   document.getElementById('panelCount').textContent = `${list.length} ${list.length===1?'university':'universities'}`;
   document.getElementById('uniList').innerHTML = list.length ? list.map(u=>`
     <div class="uni">
-      <span class="rank ${tier(u.euRank)}">#${u.euRank}</span>
+      <span class="rank ${tier(u.euRank)}">#${u.euRank} in Europe</span>
       <div class="uni-name">${u.name}</div>
       <div class="muted">Rank in Europe</div>
     </div>
