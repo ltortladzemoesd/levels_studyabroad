@@ -27,6 +27,8 @@
     fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700;
     letter-spacing:.3px; pointer-events:none;
   }
+  /* non-interactive rest of world */
+  .rest{fill:#F7FAFF; stroke:var(--border); stroke-width:1}
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
   .panel-title{font-weight:800}
@@ -75,16 +77,17 @@ const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
 // -------- Map scaffolding --------
 const svg = d3.select('#map');
+const gRest      = svg.append('g');     // non-interactive rest of world
 const gCountries = svg.append('g');     // zoomed (scale + translate)
-const gLabels = svg.append('g');        // NOT scaled; we reposition labels manually
+const gLabels    = svg.append('g');     // NOT scaled; we reposition labels manually
 
 let projection, path;
 let LABELS = [];
 
 const EUROPE = new Set([
-  "Albania","Andorra","Armenia","Azerbaijan",                 // <-- added Armenia, Azerbaijan
+  "Albania","Andorra","Armenia","Azerbaijan",
   "Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria",
-  "Canada",                                                   // <-- added Canada
+  "Canada",
   "Croatia","Czechia","Denmark","Estonia","Finland","France",
   "Germany","Greece","Hungary","Iceland","Ireland","Italy",
   "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg",
@@ -92,7 +95,7 @@ const EUROPE = new Set([
   "North Macedonia","Norway","Poland","Portugal","Romania",
   "San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden",
   "Switzerland","Ukraine","United Kingdom","Vatican",
-  "Georgia","Turkey","Russia","Mexico","United States of America" // <-- added Mexico, USA
+  "Georgia","Turkey","Russia","Mexico","United States of America"
 ]);
 const NAME_FIX = new Map([
   ["Bosnia and Herz.","Bosnia & Herzegovina"],
@@ -140,7 +143,8 @@ function reassignCrimea(features){
 // Zoom: screen-constant labels
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
-  gCountries.attr('transform', t);
+  gRest.attr('transform', t);       // pan/zoom rest of world
+  gCountries.attr('transform', t);  // pan/zoom interactive countries
   updateLabels(k, t);
 });
 svg.call(zoom);
@@ -152,6 +156,16 @@ function render(){
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
+
+    // --- draw rest of world (non-interactive, #F7FAFF) ---
+    const rest = world.features.filter(f => !EUROPE.has(rawName(f)));
+    gRest.selectAll('path.rest')
+      .data(rest, d=>rawName(d))
+      .join('path')
+      .attr('class','rest')
+      .attr('d', path);
+
+    // Interactive subset
     const features = world.features.filter(f => EUROPE.has(rawName(f)));
 
     // Apply UN-recognized assignment for Crimea
