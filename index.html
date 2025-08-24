@@ -95,20 +95,20 @@ const NAME_FIX = new Map([
   ["North Macedonia","N. Macedonia"]
 ]);
 
+// hide labels for these microstates only
+const HIDE_LABELS = new Set(["Vatican","Kosovo","Andorra","San Marino"]);
+
 // accurate text measuring for collision
 const measure = (() => {
   const c = document.createElement('canvas'); const ctx = c.getContext('2d');
   return (text, px) => { ctx.font = `700 ${px}px ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
 })();
 
-// Zoom:
-// - countries group gets full transform (scale+translate)
-// - labels are re-positioned to screen coords each tick (no scale)
-// - font size and halo shrink by exactly 1/k (screen-constant look)
+// Zoom: screen-constant labels
 const zoom = d3.zoom().scaleExtent([1, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gCountries.attr('transform', t);
-  updateLabels(k, t);       // <-- key: inverse-scale fonts + reposition
+  updateLabels(k, t);
 });
 svg.call(zoom);
 
@@ -136,6 +136,7 @@ function render(){
     // Label anchors via polylabel (inside polygon)
     LABELS = features.map(f=>{
       const name = displayName(f);
+      if (HIDE_LABELS.has(name)) return null;       // <- hide these labels
       const geom = f.geometry;
       let ll;
       try{
@@ -150,16 +151,16 @@ function render(){
         }
       }catch(_){ ll = d3.geoCentroid(f); }
       let [x,y] = projection(ll);   // base screen coords at k=1
-      if (name === 'France') { x += 80; y -= 14; } // ← moved right & up
+      if (name === 'France') { x += 80; y -= 56; }  // ← right and 3× more up
       return {name, feature:f, x, y};
-    });
+    }).filter(Boolean);
 
-    // Create label nodes (we’ll control x/y/size on zoom)
+    // Create label nodes
     gLabels.selectAll('text.label')
       .data(LABELS, d=>d.name)
       .join('text')
       .attr('class','label')
-      .text(d=>d.name);  /* sentence case */
+      .text(d=>d.name);
 
     // initial layout (k=1, identity)
     updateLabels(1, d3.zoomIdentity);
@@ -170,18 +171,11 @@ function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Un
 function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
-/** Keep labels screen-constant:
- *  - position each label with the zoom transform (applyX/applyY)
- *  - font size = basePx / k
- *  - halo stroke width = baseStroke / k
- *  - simple collision pass in *screen space* using the computed px
- */
 function updateLabels(k, t){
-  const basePx = 17.6;              // 20% smaller than 22px
+  const basePx = 17.6;
   const px = Math.max(10, basePx / k);
   const halo = Math.max(1, 3 / k);
 
-  // position + size first
   const sel = gLabels.selectAll('text.label')
     .style('font-size', `${px}px`)
     .style('stroke-width', `${halo}px`)
@@ -189,11 +183,10 @@ function updateLabels(k, t){
     .attr('y', d => t.applyY(d.y))
     .attr('display', null);
 
-  // collision cull in screen space
   const placed = [];
   sel.each(function(d){
     const el = this;
-    const text = d.name;  /* no uppercasing */
+    const text = d.name;
     const w = measure(text, px);
     const h = px;
     const x = +el.getAttribute('x') - w/2;
@@ -226,5 +219,3 @@ showCountry('United Kingdom'); // optional default
 </script>
 </body>
 </html>
-
-
