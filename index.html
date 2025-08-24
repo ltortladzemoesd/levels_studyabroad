@@ -20,15 +20,12 @@
   html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,Arial}
   .app{display:grid;grid-template-columns:1.5fr .9fr;height:100vh; position:relative}
   .app.closed{grid-template-columns:1fr 0}
-  .map-wrap{background:var(--sea); position:relative; grid-column:1 / -1;} /* span full width to remove white block */
+  .map-wrap{background:var(--sea); position:relative; grid-column:1 / -1;}
   svg{width:100%;height:100%}
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
   .country.selected{fill:var(--hover) !important;}
-  .label{
-    fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700;
-    letter-spacing:.3px; pointer-events:none;
-  }
+  .label{ fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700; letter-spacing:.3px; pointer-events:none; }
   .rest{fill:#F7FAFF; stroke:var(--border); stroke-width:1}
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .app.closed .panel{display:none}
@@ -49,11 +46,11 @@
   @media (min-width:901px){
     .panel{
       position:absolute; top:20px; right:20px; bottom:20px; width:420px;
-      border-radius:20px; padding:20px; /* clean, even padding; fixes right-side push */
-      border-left:none; box-shadow:0 12px 30px rgba(0,0,0,.12); overflow:hidden; z-index:10;
+      border-radius:20px; padding:20px; border-left:none;
+      box-shadow:0 12px 30px rgba(0,0,0,.12); overflow:hidden; z-index:10;
     }
-    .panel-head{padding:14px 20px;} /* match outer padding */
-    .list{padding:12px 20px 20px;}  /* match outer padding */
+    .panel-head{padding:14px 20px;}
+    .list{padding:12px 20px 20px;}
   }
 
   @media (max-width:900px){
@@ -76,9 +73,7 @@
         <div class="panel-title" id="panelTitle">Pick a country</div>
         <div class="panel-count" id="panelCount">0 universities</div>
       </div>
-      <button id="closePanelBtn" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;cursor:pointer">
-        Close ✕
-      </button>
+      <button id="closePanelBtn" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;cursor:pointer">Close ✕</button>
     </div>
 
     <div style="padding:10px 20px;border-bottom:1px solid #e9eef2">
@@ -93,10 +88,10 @@
 </div>
 
 <script>
-// --- data, helpers, map setup unchanged (omitted here for brevity in this snippet) ---
-// Keep your existing JS content exactly as before below this comment,
-// with ONLY the small tweaks to open/close button visibility.
+// ===== Config: initial zoom like browser 67% =====
+const INITIAL_K = 0.67;
 
+// -------- Demo QS data --------
 const QS = [
   {country:'United Kingdom', euRank:2,  name:'Imperial College London'},
   {country:'United Kingdom', euRank:3,  name:'University of Oxford'},
@@ -116,6 +111,7 @@ const QS = [
 const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
 const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
+// -------- Map scaffolding --------
 const svg = d3.select('#map');
 const gRest      = svg.append('g');
 const gCountries = svg.append('g');
@@ -140,88 +136,136 @@ function reassignCrimea(features){
   uk.geometry.coordinates.push(...move);
 }
 
-const zoom=d3.zoom().scaleExtent([1,9]).on('zoom',ev=>{const t=ev.transform,k=t.k;gRest.attr('transform',t);gCountries.attr('transform',t);updateLabels(k,t);});
+// Zoom: allow zooming out to INITIAL_K, up to 9x in
+const zoom = d3.zoom().scaleExtent([INITIAL_K, 9]).on('zoom', ev => {
+  const t = ev.transform, k = t.k;
+  gRest.attr('transform', t);
+  gCountries.attr('transform', t);
+  updateLabels(k, t);
+});
 svg.call(zoom);
 
 function render(){
-  const w=svg.node().clientWidth,h=svg.node().clientHeight;
-  projection=d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
-  path=d3.geoPath(projection);
+  const w = svg.node().clientWidth, h = svg.node().clientHeight;
+  projection = d3.geoMercator().center([15,53]).scale(Math.min(w,h)*0.85).translate([w/2,h/2]);
+  path = d3.geoPath(projection);
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
-    const world=topojson.feature(topology, topology.objects.countries);
-    const bounds=path.bounds(world); zoom.extent([[0,0],[w,h]]).translateExtent(bounds); svg.call(zoom);
+    const world = topojson.feature(topology, topology.objects.countries);
+    const bounds = path.bounds(world);
+    zoom.extent([[0,0],[w,h]]).translateExtent(bounds);
+    svg.call(zoom);
 
-    const rest=world.features.filter(f=>!EUROPE.has(rawName(f)));
-    gRest.selectAll('path.rest').data(rest,d=>rawName(d)).join('path').attr('class','rest').attr('d',path);
+    const rest = world.features.filter(f => !EUROPE.has(rawName(f)));
+    gRest.selectAll('path.rest').data(rest,d=>rawName(d)).join('path').attr('class','rest').attr('d', path);
 
-    const features=world.features.filter(f=>EUROPE.has(rawName(f))); INTERACTIVE=features;
+    const features = world.features.filter(f => EUROPE.has(rawName(f)));
+    INTERACTIVE = features;
     reassignCrimea(features);
 
     gCountries.selectAll('path.country').data(features,d=>rawName(d)).join('path')
-      .attr('class','country').attr('d',path)
-      .on('click',(e,d)=>{selectedCountry=displayName(d);showCountry(selectedCountry);updateCountryFills();openPanel();})
-      .on('mouseenter',function(e,d){if(displayName(d)!==selectedCountry)d3.select(this).attr('fill','var(--hover)');})
-      .on('mouseleave',function(e,d){d3.select(this).attr('fill',displayName(d)===selectedCountry?'var(--hover)':'var(--land)');})
+      .attr('class','country').attr('d', path)
+      .on('click', (e,d)=>{ selectedCountry = displayName(d); showCountry(selectedCountry); updateCountryFills(); openPanel(); })
+      .on('mouseenter', function(e,d){ if(displayName(d)!==selectedCountry) d3.select(this).attr('fill','var(--hover)'); })
+      .on('mouseleave', function(e,d){ d3.select(this).attr('fill', displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)'); })
       .attr('fill','var(--land)').attr('stroke','var(--border)');
 
-    LABELS=features.map(f=>{const name=displayName(f); if(HIDE_LABELS.has(name))return null; const g=f.geometry; let ll;
-      try{ if(g.type==="Polygon") ll=polylabel(g.coordinates,1.0); else if(g.type==="MultiPolygon"){let best=null,bestA=-Infinity; for(const p of g.coordinates){const cand=polylabel(p,1.0); const A=ringArea(p[0]); if(A>bestA){bestA=A; best=cand;}} ll=best;}}
-      catch(_){ ll=d3.geoCentroid(f); }
-      let [x,y]=projection(ll); if(name==='France'){x+=80;y-=56;} return {name,feature:f,x,y};
+    LABELS = features.map(f=>{
+      const name = displayName(f); if(HIDE_LABELS.has(name)) return null;
+      const g = f.geometry; let ll;
+      try{
+        if(g.type==="Polygon") ll = polylabel(g.coordinates,1.0);
+        else if(g.type==="MultiPolygon"){ let best=null,bestA=-Infinity; for(const p of g.coordinates){ const cand=polylabel(p,1.0); const A=ringArea(p[0]); if(A>bestA){bestA=A; best=cand;}} ll=best; }
+      }catch(_){ ll = d3.geoCentroid(f); }
+      let [x,y] = projection(ll); if(name==='France'){ x += 80; y -= 56; }
+      return {name, feature:f, x, y};
     }).filter(Boolean);
 
     gLabels.selectAll('text.label').data(LABELS,d=>d.name).join('text').attr('class','label').text(d=>d.name);
 
-    updateLabels(1,d3.zoomIdentity); updateCountryFills();
+    // Initial layout, then apply initial zoom to ~67%
+    updateLabels(1, d3.zoomIdentity);
+    updateCountryFills();
+    svg.call(zoom.scaleTo, INITIAL_K); // <-- start zoomed out
   });
 }
 
-function updateCountryFills(){ gCountries.selectAll('path.country').classed('selected',d=>displayName(d)===selectedCountry).attr('fill',d=>displayName(d)===selectedCountry?'var(--hover)':'var(--land)'); }
-
-function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
-function displayName(f){ const n=rawName(f); return NAME_FIX.get(n)||n; }
-function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const[x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
-
-function updateLabels(k,t){
-  const basePx=17.6, px=Math.max(10,basePx/k), halo=Math.max(1,3/k);
-  const sel=gLabels.selectAll('text.label').style('font-size',`${px}px`).style('stroke-width',`${halo}px`)
-    .attr('x',d=>t.applyX(d.x)).attr('y',d=>t.applyY(d.y)).attr('display',null);
-  const placed=[]; sel.each(function(d){const el=this, text=d.name, w=measure(text,px), h=px, x=+el.getAttribute('x')-w/2, y=+el.getAttribute('y')-h/2;
-    const overlap=placed.some(p=>!(x+w<p.x||p.x+p.w<x||y+h<p.y||p.y+p.h<y)); if(overlap){el.setAttribute('display','none'); return;} placed.push({x,y,w,h});});
+function updateCountryFills(){
+  gCountries.selectAll('path.country')
+    .classed('selected', d => displayName(d)===selectedCountry)
+    .attr('fill', d => displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
 }
 
+function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
+function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
+function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
+
+function updateLabels(k, t){
+  const basePx = 17.6, px = Math.max(10, basePx / k), halo = Math.max(1, 3 / k);
+  const sel = gLabels.selectAll('text.label')
+    .style('font-size', `${px}px`).style('stroke-width', `${halo}px`)
+    .attr('x', d => t.applyX(d.x)).attr('y', d => t.applyY(d.y)).attr('display', null);
+  const placed = [];
+  sel.each(function(d){
+    const el = this, text = d.name, w = measure(text, px), h = px,
+          x = +el.getAttribute('x') - w/2, y = +el.getAttribute('y') - h/2;
+    const overlap = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
+    if(overlap){ el.setAttribute('display','none'); return; }
+    placed.push({x,y,w,h});
+  });
+}
+
+// -------- Right panel --------
 function showCountry(country){
-  const list=byCountry(country);
-  document.getElementById('panelTitle').textContent=country;
-  document.getElementById('panelCount').textContent=`${list.length} ${list.length===1?'university':'universities'}`;
-  document.getElementById('uniList').innerHTML=list.length?list.map(u=>`
+  const list = byCountry(country);
+  document.getElementById('panelTitle').textContent = country;
+  document.getElementById('panelCount').textContent = `${list.length} ${list.length===1?'university':'universities'}`;
+  document.getElementById('uniList').innerHTML = list.length ? list.map(u=>`
     <div class="uni">
       <span class="rank ${tier(u.euRank)}">#${u.euRank} in Europe</span>
       <div class="uni-name">${u.name}</div>
-    </div>`).join(''):`<div class="muted">No universities listed yet.</div>`;
+    </div>
+  `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
 
-// ---- Search handlers (unchanged) ----
-const searchEl=document.getElementById('countrySearch');
-searchEl.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const q=e.target.value.trim().toLowerCase(); if(!q)return;
-  const names=INTERACTIVE.map(d=>displayName(d)); let pick=names.find(n=>n.toLowerCase()===q) || names.find(n=>n.toLowerCase().startsWith(q)) || names.find(n=>n.toLowerCase().includes(q));
-  if(pick){selectedCountry=pick; showCountry(pick); updateCountryFills(); openPanel();}
+// ---- Search ----
+const searchEl = document.getElementById('countrySearch');
+searchEl.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const q = e.target.value.trim().toLowerCase(); if(!q) return;
+  const names = INTERACTIVE.map(d => displayName(d));
+  let pick = names.find(n=>n.toLowerCase()===q) || names.find(n=>n.toLowerCase().startsWith(q)) || names.find(n=>n.toLowerCase().includes(q));
+  if(pick){ selectedCountry=pick; showCountry(pick); updateCountryFills(); openPanel(); }
 });
-const uniSearchEl=document.getElementById('uniSearch');
-uniSearchEl.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; const q=e.target.value.trim().toLowerCase(); if(!q)return;
-  let match=QS.find(u=>u.name.toLowerCase()===q) || QS.find(u=>u.name.toLowerCase().startsWith(q)) || QS.find(u=>u.name.toLowerCase().includes(q));
-  if(match){selectedCountry=match.country; showCountry(match.country); updateCountryFills(); openPanel();
-    requestAnimationFrame(()=>{ const cards=document.querySelectorAll('#uniList .uni'); for(const card of cards){ const nameEl=card.querySelector('.uni-name');
-      if(nameEl && nameEl.textContent.trim().toLowerCase()===match.name.toLowerCase()){ card.scrollIntoView({behavior:'smooth',block:'center'}); const original=card.style.backgroundColor;
-        card.style.transition='background-color .6s ease'; card.style.backgroundColor='#FFF3C4'; setTimeout(()=>{ card.style.backgroundColor=original||''; },1200); break; } }});
+
+const uniSearchEl = document.getElementById('uniSearch');
+uniSearchEl.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const q = e.target.value.trim().toLowerCase(); if(!q) return;
+  let match = QS.find(u=>u.name.toLowerCase()===q) || QS.find(u=>u.name.toLowerCase().startsWith(q)) || QS.find(u=>u.name.toLowerCase().includes(q));
+  if(match){
+    selectedCountry = match.country; showCountry(match.country); updateCountryFills(); openPanel();
+    requestAnimationFrame(()=>{
+      const cards = document.querySelectorAll('#uniList .uni');
+      for(const card of cards){
+        const nameEl = card.querySelector('.uni-name');
+        if(nameEl && nameEl.textContent.trim().toLowerCase() === match.name.toLowerCase()){
+          card.scrollIntoView({behavior:'smooth', block:'center'});
+          const original = card.style.backgroundColor;
+          card.style.transition = 'background-color .6s ease';
+          card.style.backgroundColor = '#FFF3C4';
+          setTimeout(()=>{ card.style.backgroundColor = original || ''; }, 1200);
+          break;
+        }
+      }
+    });
   }
 });
 
-// ---- Panel open/close control (toggle button visibility) ----
-const appEl=document.querySelector('.app');
-const toggleBtn=document.getElementById('togglePanel');
-const closeBtn=document.getElementById('closePanelBtn');
+// ---- Panel open/close control ----
+const appEl = document.querySelector('.app');
+const toggleBtn = document.getElementById('togglePanel');
+const closeBtn = document.getElementById('closePanelBtn');
 function openPanel(){ appEl.classList.remove('closed'); toggleBtn.setAttribute('aria-expanded','true'); toggleBtn.style.display='none'; }
 function closePanel(){ appEl.classList.add('closed'); toggleBtn.setAttribute('aria-expanded','false'); toggleBtn.style.display='block'; }
 toggleBtn.addEventListener('click', openPanel);
