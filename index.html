@@ -12,7 +12,7 @@
 
 <style>
   :root{
-    --sea:#7ecbff; --land:#ffffff; --border:#cfd6dc; --hover:#23B89922;
+    --sea:#7ecbff; --land:#ffffff; --border:#cfd6dc; --hover:#ADE2D7;
     --brand:#2B445B; --ink:#0f1f29; --muted:#6b7a86;
     --t1:#23B899; --t2:#FDE200; --t3:#F66E6E;
   }
@@ -83,6 +83,7 @@ const gLabels    = svg.append('g');     // NOT scaled; we reposition labels manu
 
 let projection, path;
 let LABELS = [];
+let selectedCountry = null;
 
 const EUROPE = new Set([
   "Albania","Andorra","Armenia","Azerbaijan",
@@ -177,9 +178,17 @@ function render(){
       .join('path')
       .attr('class','country')
       .attr('d', path)
-      .on('click', (e,d)=> showCountry(displayName(d)))
-      .on('mouseenter', function(){ d3.select(this).attr('fill','var(--hover)'); })
-      .on('mouseleave', function(){ d3.select(this).attr('fill','var(--land)'); })
+      .on('click', (e,d)=> { 
+        selectedCountry = displayName(d);
+        showCountry(selectedCountry);
+        updateCountryFills();
+      })
+      .on('mouseenter', function(e,d){
+        if (displayName(d) !== selectedCountry) d3.select(this).attr('fill','var(--hover)');
+      })
+      .on('mouseleave', function(e,d){
+        d3.select(this).attr('fill', displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
+      })
       .attr('fill','var(--land)')
       .attr('stroke','var(--border)');
 
@@ -214,7 +223,13 @@ function render(){
 
     // initial layout (k=1, identity)
     updateLabels(1, d3.zoomIdentity);
+    updateCountryFills();
   });
+}
+
+function updateCountryFills(){
+  gCountries.selectAll('path.country')
+    .attr('fill', d => displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
 }
 
 function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
