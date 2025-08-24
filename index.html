@@ -63,12 +63,12 @@ const QS = [
   {country:'United Kingdom', euRank:12, name:'LSE – London School of Economics'},
   {country:'Switzerland',    euRank:1,  name:'ETH Zurich'},
   {country:'Switzerland',    euRank:10, name:'EPFL'},
-  {country:'Germany',        euRank:11, name:'Technical University of Munich (TUM)'},
-  {country:'Germany',        euRank:18, name:'LMU Munich'},
-  {country:'France',         euRank:9,  name:'Université PSL'},
-  {country:'Netherlands',    euRank:15, name:'Delft University of Technology'},
-  {country:'Netherlands',    euRank:17, name:'University of Amsterdam'},
-  {country:'Sweden',         euRank:13, name:'Lund University'}
+  {country:'Germany',        euRank:11,  name:'Technical University of Munich (TUM)'},
+  {country:'Germany',        euRank:18,  name:'LMU Munich'},
+  {country:'France',         euRank:9,   name:'Université PSL'},
+  {country:'Netherlands',    euRank:15,  name:'Delft University of Technology'},
+  {country:'Netherlands',    euRank:17,  name:'University of Amsterdam'},
+  {country:'Sweden',         euRank:13,  name:'Lund University'}
 ];
 const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
 const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
@@ -82,12 +82,17 @@ let projection, path;
 let LABELS = [];
 
 const EUROPE = new Set([
-  "Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Croatia","Czechia",
-  "Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy",
-  "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro",
-  "Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia",
-  "Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican",
-  "Georgia","Turkey","Russia"   // <-- Added Russia earlier
+  "Albania","Andorra","Armenia","Azerbaijan",                 // <-- added Armenia, Azerbaijan
+  "Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria",
+  "Canada",                                                   // <-- added Canada
+  "Croatia","Czechia","Denmark","Estonia","Finland","France",
+  "Germany","Greece","Hungary","Iceland","Ireland","Italy",
+  "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg",
+  "Malta","Moldova","Monaco","Montenegro","Netherlands",
+  "North Macedonia","Norway","Poland","Portugal","Romania",
+  "San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden",
+  "Switzerland","Ukraine","United Kingdom","Vatican",
+  "Georgia","Turkey","Russia","Mexico","United States of America" // <-- added Mexico, USA
 ]);
 const NAME_FIX = new Map([
   ["Bosnia and Herz.","Bosnia & Herzegovina"],
