@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Levels Academy – Europe (Screen-constant Labels)</title>
+<title>Levels Academy – Interactive Map (World Rankings)</title>
 
+<!-- libs -->
 <script src="https://unpkg.com/d3@7"></script>
 <script src="https://unpkg.com/topojson-client@3"></script>
 <script src="https://unpkg.com/@mapbox/polylabel@1.1.0/polylabel.min.js"></script>
@@ -12,7 +13,11 @@
 
 <style>
   :root{
-    --sea:#BBE0F9; --land:#ffffff; --border:#cfd6dc; --hover:#23B899;
+    --sea:#BBE0F9;     /* water */
+    --land:#ffffff;    /* interactive countries fill */
+    --border:#cfd6dc;  /* all borders */
+    --hover:#23B899;   /* hover + selected */
+    --rest:#F7FAFF;    /* non-interactive countries */
     --brand:#2B445B; --ink:#0f1f29; --muted:#6b7a86;
     --t1:#23B899; --t2:#FDE200; --t3:#F66E6E;
   }
@@ -22,11 +27,20 @@
   .app.closed{grid-template-columns:1fr 0}
   .map-wrap{background:var(--sea); position:relative; grid-column:1 / -1;}
   svg{width:100%;height:100%}
+
+  /* map */
   .country{fill:var(--land);stroke:var(--border);stroke-width:1;cursor:pointer;transition:fill .12s ease}
   .country:hover{fill:var(--hover)}
   .country.selected{fill:var(--hover) !important;}
-  .label{ fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700; letter-spacing:.3px; pointer-events:none; }
-  .rest{fill:#F7FAFF; stroke:var(--border); stroke-width:1}
+  .rest{fill:var(--rest); stroke:var(--border); stroke-width:1; pointer-events:none}
+
+  /* labels */
+  .label{
+    fill:#333333; font-family:'Red Hat Display', ui-sans-serif, system-ui, Arial; font-weight:700;
+    letter-spacing:.3px; pointer-events:none;
+  }
+
+  /* right panel */
   .panel{background:#fff;border-left:1px solid #e9eef2;display:flex;flex-direction:column}
   .app.closed .panel{display:none}
   .panel-head{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
@@ -35,14 +49,16 @@
   .list{padding:12px;overflow:auto}
   .uni{border:1px solid #eef2f5;border-radius:14px;padding:10px 12px;margin:8px 0}
   .rank{display:inline-block;padding:2px 8px;border-radius:8px;font-weight:800;color:#fff;margin-bottom:4px}
-  .rank.t1{background:#23B899} .rank.t2{background:#FDE200;color:#222} .rank.t3{background:#F66E6E}
+  .rank.t1{background:var(--t1)} .rank.t2{background:var(--t2);color:#222} .rank.t3{background:var(--t3)}
   .uni-name{font-weight:700;color:var(--ink)}
+
+  /* floating open button */
   .panel-toggle{
     position:absolute; top:12px; right:12px; background:#fff; border:1px solid #e5e9ee;
     border-radius:10px; padding:8px 12px; font-size:14px; cursor:pointer;
   }
 
-  /* Floating panel on desktop */
+  /* floating panel look on desktop */
   @media (min-width:901px){
     .panel{
       position:absolute; top:20px; right:20px; bottom:20px; width:420px;
@@ -64,7 +80,7 @@
 <div class="app closed">
   <div class="map-wrap">
     <button id="togglePanel" class="panel-toggle" aria-expanded="false" title="Open universities panel">Open panel ▸</button>
-    <svg id="map" aria-label="Europe map"></svg>
+    <svg id="map" aria-label="Map"></svg>
   </div>
 
   <aside class="panel">
@@ -77,9 +93,9 @@
     </div>
 
     <div style="padding:10px 20px;border-bottom:1px solid #e9eef2">
-      <input id="countrySearch" type="text" placeholder="Search country…" 
+      <input id="countrySearch" type="text" placeholder="Search country…"
              style="width:100%;padding:10px 12px;border:1px solid #e5e9ee;border-radius:10px;font-size:14px;margin-bottom:8px"/>
-      <input id="uniSearch" type="text" placeholder="Search university…" 
+      <input id="uniSearch" type="text" placeholder="Search university…"
              style="width:100%;padding:10px 12px;border:1px solid #e5e9ee;border-radius:10px;font-size:14px"/>
     </div>
 
@@ -88,29 +104,558 @@
 </div>
 
 <script>
-// ===== Config: initial zoom like browser 67% =====
-const INITIAL_K = 0.67;
+const QS = [
+  {country:'United Kingdom', wRank:2, name:`Imperial College London`},
+  {country:'United Kingdom', wRank:4, name:`University of Oxford`},
+  {country:'United Kingdom', wRank:6, name:`University of Cambridge`},
+  {country:'Switzerland', wRank:7, name:`ETH Zurich (Swiss Federal Institute of Technology)`},
+  {country:'United Kingdom', wRank:9, name:`UCL (University College London)`},
+  {country:'Switzerland', wRank:22, name:`École Polytechnique Fédérale de Lausanne`},
+  {country:'Germany', wRank:22, name:`Technical University of Munich`},
+  {country:'France', wRank:28, name:`PSL University`},
+  {country:'United Kingdom', wRank:31, name:`King"s College London (KCL)`},
+  {country:'United Kingdom', wRank:34, name:`University of Edinburgh`},
+  {country:'United Kingdom', wRank:35, name:`The University of Manchester`},
+  {country:'France', wRank:41, name:`Institut Polytechnique de Paris`},
+  {country:'Netherlands', wRank:47, name:`Delft University of Technology`},
+  {country:'United Kingdom', wRank:51, name:`University of Bristol`},
+  {country:'Netherlands', wRank:53, name:`The University of Amsterdam`},
+  {country:'United Kingdom', wRank:56, name:`London School of Economics and Political Science (LSE)`},
+  {country:'Germany', wRank:58, name:`Ludwig-Maximilians-Universität München`},
+  {country:'Belgium', wRank:60, name:`KU Leuven`},
+  {country:'France', wRank:70, name:`Université Paris-Saclay`},
+  {country:'Sweden', wRank:72, name:`Lund University`},
+  {country:'France', wRank:72, name:`Sorbonne University (merged from Paris IV & UPMC)`},
+  {country:'United Kingdom', wRank:74, name:`The University of Warwick`},
+  {country:'Ireland', wRank:75, name:`Trinity College Dublin, The University of Dublin`},
+  {country:'United Kingdom', wRank:76, name:`University of Birmingham`},
+  {country:'Sweden', wRank:78, name:`KTH Royal Institute of Technology`},
+  {country:'United Kingdom', wRank:79, name:`University of Glasgow`},
+  {country:'Germany', wRank:80, name:`Ruprecht-Karls-Universität Heidelberg`},
+  {country:'United Kingdom', wRank:86, name:`University of Leeds`},
+  {country:'United Kingdom', wRank:87, name:`University of Southampton`},
+  {country:'Germany', wRank:88, name:`Freie Universität Berlin`},
+  {country:'United Kingdom', wRank:92, name:`The University of Sheffield`},
+  {country:'Sweden', wRank:93, name:`Uppsala University`},
+  {country:'United Kingdom', wRank:94, name:`Durham University`},
+  {country:'United Kingdom', wRank:97, name:`The University of Nottingham`},
+  {country:'Germany', wRank:98, name:`Karlsruhe Institute of Technology (KIT)`},
+  {country:'Italy', wRank:98, name:`Politecnico di Milano`},
+  {country:'Switzerland', wRank:100, name:`University of Zurich (UZH)`},
+  {country:'Denmark', wRank:101, name:`University of Copenhagen`},
+  {country:'Netherlands', wRank:103, name:`Utrecht University`},
+  {country:'Russian Federation', wRank:105, name:`Lomonosov Moscow State University`},
+  {country:'Germany', wRank:105, name:`Rheinisch-Westfälische Technische Hochschule Aachen`},
+  {country:'Denmark', wRank:107, name:`Technical University of Denmark`},
+  {country:'United Kingdom', wRank:110, name:`Queen Mary University of London (QMUL)`},
+  {country:'United Kingdom', wRank:113, name:`University of St Andrews`},
+  {country:'Finland', wRank:114, name:`Aalto University`},
+  {country:'Finland', wRank:116, name:`University of Helsinki`},
+  {country:'Ireland', wRank:118, name:`University College Dublin`},
+  {country:'Netherlands', wRank:119, name:`Leiden University`},
+  {country:'Norway', wRank:119, name:`University of Oslo`},
+  {country:'Italy', wRank:128, name:`Sapienza University of Rome`},
+  {country:'Germany', wRank:130, name:`Humboldt-Universität zu Berlin`},
+  {country:'Denmark', wRank:131, name:`Aarhus University`},
+  {country:'United Kingdom', wRank:132, name:`University of Bath`},
+  {country:'United Kingdom', wRank:137, name:`Newcastle University`},
+  {country:'Italy', wRank:138, name:`Alma Mater Studiorum - University of Bologna`},
+  {country:'Netherlands', wRank:140, name:`Eindhoven University of Technology`},
+  {country:'Netherlands', wRank:140, name:`Erasmus University Rotterdam`},
+  {country:'Germany', wRank:145, name:`Technische Universität Berlin`},
+  {country:'Sweden', wRank:147, name:`Stockholm University`},
+  {country:'Netherlands', wRank:147, name:`University of Groningen`},
+  {country:'United Kingdom', wRank:147, name:`University of Liverpool`},
+  {country:'Austria', wRank:152, name:`University of Vienna`},
+  {country:'Netherlands', wRank:153, name:`Wageningen University & Research`},
+  {country:'United Kingdom', wRank:155, name:`University of Exeter`},
+  {country:'Switzerland', wRank:155, name:`University of Geneva`},
+  {country:'United Kingdom', wRank:157, name:`Lancaster University`},
+  {country:'Switzerland', wRank:158, name:`University of Basel`},
+  {country:'Spain', wRank:160, name:`University of Barcelona`},
+  {country:'Belgium', wRank:162, name:`Ghent University`},
+  {country:'Sweden', wRank:165, name:`Chalmers University of Technology`},
+  {country:'United Kingdom', wRank:169, name:`University of York`},
+  {country:'Spain', wRank:172, name:`Universitat Autónoma de Barcelona`},
+  {country:'United Kingdom', wRank:181, name:`Cardiff University`},
+  {country:'Switzerland', wRank:184, name:`University of Bern`},
+  {country:'Spain', wRank:187, name:`University Complutense Madrid`},
+  {country:'Belgium', wRank:191, name:`Université Catholique de Louvain (UCL)`},
+  {country:'Germany', wRank:193, name:`Universität Hamburg`},
+  {country:'United Kingdom', wRank:194, name:`University of Reading`},
+  {country:'Netherlands', wRank:194, name:`Vrije Universiteit Amsterdam`},
+  {country:'Austria', wRank:197, name:`Vienna University of Technology`},
+  {country:'United Kingdom', wRank:199, name:`Queen"s University Belfast`},
+  {country:'Germany', wRank:201, name:`Universität Freiburg`},
+  {country:'Sweden', wRank:202, name:`University of Gothenburg`},
+  {country:'Netherlands', wRank:203, name:`University of Twente`},
+  {country:'France', wRank:205, name:`Ecole Normale Supérieure de Lyon`},
+  {country:'Spain', wRank:206, name:`Universidad Autónoma de Madrid`},
+  {country:'Germany', wRank:207, name:`Rheinische Friedrich-Wilhelms-Universität Bonn`},
+  {country:'Switzerland', wRank:212, name:`University of Lausanne`},
+  {country:'Germany', wRank:215, name:`Eberhard Karls Universität Tübingen`},
+  {country:'Germany', wRank:218, name:`Technische Universität Dresden`},
+  {country:'United Kingdom', wRank:225, name:`Loughborough University`},
+  {country:'Belgium', wRank:227, name:`Université Libre de Bruxelles (ULB)`},
+  {country:'Portugal', wRank:230, name:`University of Lisbon`},
+  {country:'Germany', wRank:232, name:`Universität Erlangen-Nürnberg`},
+  {country:'Italy', wRank:233, name:`University of Padova`},
+  {country:'Portugal', wRank:237, name:`University of Porto`},
+  {country:'Netherlands', wRank:239, name:`Maastricht University`},
+  {country:'Italy', wRank:242, name:`Politecnico di Torino`},
+  {country:'Germany', wRank:243, name:`Georg-August-Universität Göttingen`},
+  {country:'Ireland', wRank:246, name:`University College Cork`},
+  {country:'United Kingdom', wRank:251, name:`University of Strathclyde`},
+  {country:'Germany', wRank:253, name:`Technische Universität Darmstadt`},
+  {country:'France', wRank:257, name:`Université Paris 1 Panthéon-Sorbonne`},
+  {country:'United Kingdom', wRank:262, name:`University of Aberdeen`},
+  {country:'Spain', wRank:262, name:`University of Navarra`},
+  {country:'United Kingdom', wRank:262, name:`University of Surrey`},
+  {country:'Czechia', wRank:265, name:`Charles University`},
+  {country:'Spain', wRank:265, name:`Universitat Pompeu Fabra`},
+  {country:'Norway', wRank:267, name:`Norwegian University of Science And Technology`},
+  {country:'Poland', wRank:271, name:`University of Warsaw`},
+  {country:'Germany', wRank:272, name:`Universität zu Köln`},
+  {country:'Italy', wRank:276, name:`University of Milan`},
+  {country:'United Kingdom', wRank:278, name:`University of Sussex`},
+  {country:'Netherlands', wRank:279, name:`Radboud University Nijmegen`},
+  {country:'Belgium', wRank:280, name:`University of Antwerp`},
+  {country:'Ireland', wRank:284, name:`University of Galway / Ollscoil na Gaillimhe`},
+  {country:'United Kingdom', wRank:287, name:`Heriot-Watt University`},
+  {country:'Norway', wRank:287, name:`University of Bergen`},
+  {country:'United Kingdom', wRank:292, name:`Swansea University`},
+  {country:'Belgium', wRank:294, name:`Vrije Universiteit Brussel (VUB)`},
+  {country:'France', wRank:300, name:`Université Paris Cité`},
+  {country:'Spain', wRank:301, name:`Universidad Carlos III de Madrid`},
+  {country:'Poland', wRank:303, name:`Jagiellonian University`},
+  {country:'Denmark', wRank:303, name:`University of Southern Denmark`},
+  {country:'Denmark', wRank:306, name:`Aalborg University`},
+  {country:'United Kingdom', wRank:310, name:`City St George’s, University of London`},
+  {country:'Sweden', wRank:310, name:`Linköping University`},
+  {country:'Germany', wRank:310, name:`Universität Stuttgart`},
+  {country:'Germany', wRank:316, name:`Goethe Universität Frankfurt am Main`},
+  {country:'Russian Federation', wRank:320, name:`Bauman Moscow State Technical University`},
+  {country:'France', wRank:321, name:`Université Grenoble Alpes`},
+  {country:'United Kingdom', wRank:326, name:`University of Leicester`},
+  {country:'Portugal', wRank:327, name:`Universidade Nova de Lisboa`},
+  {country:'Spain', wRank:334, name:`Universidad Politécnica de Madrid`},
+  {country:'Finland', wRank:342, name:`University of Oulu`},
+  {country:'Italy', wRank:343, name:`University of Pisa`},
+  {country:'Netherlands', wRank:347, name:`Tilburg University`},
+  {country:'Portugal', wRank:347, name:`University of Coimbra`},
+  {country:'Austria', wRank:350, name:`Universität Innsbruck`},
+  {country:'Germany', wRank:350, name:`University of Münster`},
+  {country:'Greece', wRank:355, name:`National Technical University of Athens`},
+  {country:'Italy', wRank:355, name:`Università degli Studi di Roma - Tor Vergata`},
+  {country:'Estonia', wRank:362, name:`University of Tartu`},
+  {country:'Finland', wRank:366, name:`University of Turku`},
+  {country:'Russian Federation', wRank:367, name:`RUDN University`},
+  {country:'France', wRank:367, name:`Sciences Po Paris`},
+  {country:'United Kingdom', wRank:374, name:`Oxford Brookes University`},
+  {country:'Russian Federation', wRank:375, name:`Saint Petersburg State University`},
+  {country:'Belgium', wRank:379, name:`University of Liege`},
+  {country:'Italy', wRank:379, name:`University of Naples - Federico II`},
+  {country:'United Kingdom', wRank:381, name:`University of East Anglia (UEA)`},
+  {country:'Luxembourg', wRank:381, name:`University of Luxembourg`},
+  {country:'United Kingdom', wRank:385, name:`Brunel University of London`},
+  {country:'United Kingdom', wRank:388, name:`Birkbeck College, University of London`},
+  {country:'Greece', wRank:390, name:`National and Kapodistrian University of Athens`},
+  {country:'Spain', wRank:392, name:`Universitat Politècnica de Catalunya`},
+  {country:'United Kingdom', wRank:395, name:`Aston University`},
+  {country:'Germany', wRank:395, name:`Ruhr-Universität Bochum`},
+  {country:'Finland', wRank:397, name:`Lappeenranta-Lahti University of Technology LUT`},
+  {country:'United Kingdom', wRank:397, name:`University of Kent`},
+  {country:'Sweden', wRank:401, name:`Umeå University`},
+  {country:'Spain', wRank:401, name:`University of Granada`},
+  {country:'Ireland', wRank:401, name:`University of Limerick`},
+  {country:'Italy', wRank:404, name:`University of Florence`},
+  {country:'France', wRank:406, name:`Institut National des Sciences Appliquées de Lyon (INSA)`},
+  {country:'Italy', wRank:408, name:`University of Turin`},
+  {country:'Italy', wRank:409, name:`Università\xa0 Cattolica del Sacro Cuore`},
+  {country:'Ireland', wRank:410, name:`Dublin City University`},
+  {country:'Czechia', wRank:416, name:`Czech Technical University In Prague`},
+  {country:'Germany', wRank:416, name:`Julius-Maximilians-Universität Würzburg`},
+  {country:'Germany', wRank:416, name:`Universität Mannheim`},
+  {country:'Portugal', wRank:419, name:`University of Aveiro`},
+  {country:'France', wRank:420, name:`Université de Strasbourg`},
+  {country:'Spain', wRank:422, name:`Universitat Politecnica de Valencia`},
+  {country:'Finland', wRank:423, name:`Tampere University`},
+  {country:'Italy', wRank:423, name:`Università\xa0 degli Studi di Pavia`},
+  {country:'Austria', wRank:427, name:`Graz University of Technology`},
+  {country:'France', wRank:428, name:`Aix-Marseille University`},
+  {country:'United Kingdom', wRank:428, name:`University of Dundee`},
+  {country:'Czechia', wRank:430, name:`Masaryk University`},
+  {country:'Spain', wRank:430, name:`Universitat de Valencia`},
+  {country:'France', wRank:430, name:`Université de Montpellier`},
+  {country:'Germany', wRank:433, name:`Leibniz Universität Hannover`},
+  {country:'Spain', wRank:436, name:`Universitat Ramon Llull`},
+  {country:'Spain', wRank:438, name:`IE University`},
+  {country:'Russian Federation', wRank:440, name:`National Research University Higher School of Economics (HSE, Moscow)`},
+  {country:'Germany', wRank:440, name:`Universität Konstanz`},
+  {country:'Lithuania', wRank:446, name:`Vilnius University`},
+  {country:'Belarus', wRank:447, name:`Belarusian State University`},
+  {country:'Germany', wRank:448, name:`Universität Bayreuth`},
+  {country:'Russian Federation', wRank:450, name:`Kazan Federal University`},
+  {country:'Germany', wRank:452, name:`Johannes Gutenberg Universität Mainz`},
+  {country:'United Kingdom', wRank:456, name:`University of Essex`},
+  {country:'Russian Federation', wRank:461, name:`Novosibirsk State University`},
+  {country:'United Kingdom', wRank:461, name:`Royal Holloway University of London`},
+  {country:'Italy', wRank:461, name:`Università Vita-Salute San Raffaele`},
+  {country:'Spain', wRank:469, name:`Universidad de Sevilla`},
+  {country:'Austria', wRank:473, name:`Johannes Kepler University Linz`},
+  {country:'Switzerland', wRank:473, name:`Università della Svizzera Italiana`},
+  {country:'Russian Federation', wRank:477, name:`Moscow Institute of Physics and Technology State University`},
+  {country:'Germany', wRank:477, name:`Universität Potsdam`},
+  {country:'Greece', wRank:485, name:`Aristotle University of Thessaloniki`},
+  {country:'Italy', wRank:485, name:`University of Trento`},
+  {country:'Germany', wRank:487, name:`Technische Universität Bergakademie Freiberg`},
+  {country:'Poland', wRank:487, name:`Warsaw University of Technology`},
+  {country:'France', wRank:494, name:`Université de Bordeaux`},
+  {country:'Germany', wRank:496, name:`Justus-Liebig-Universität Gießen`},
+  {country:'Finland', wRank:498, name:`University of Jyväskylä`},
+  {country:'Russian Federation', wRank:499, name:`Tomsk State University`},
+  {country:'United Kingdom', wRank:511, name:`SOAS University of London`},
+  {country:'United Kingdom', wRank:511, name:`University of Bradford`},
+  {country:'United Kingdom', wRank:517, name:`University of Stirling`},
+  {country:'Russian Federation', wRank:519, name:`Ural Federal University`},
+  {country:'United Kingdom', wRank:524, name:`University of Huddersfield`},
+  {country:'United Kingdom', wRank:526, name:`University of Hull`},
+  {country:'Spain', wRank:526, name:`University of Salamanca`},
+  {country:'Germany', wRank:530, name:`Universität Bremen`},
+  {country:'Italy', wRank:530, name:`University of Genoa`},
+  {country:'Germany', wRank:535, name:`Universität Leipzig`},
+  {country:'Slovenia', wRank:535, name:`University of Ljubljana`},
+  {country:'Italy', wRank:542, name:`University of Milano-Bicocca`},
+  {country:'Germany', wRank:546, name:`Universität Ulm`},
+  {country:'United Kingdom', wRank:550, name:`Northumbria University at Newcastle`},
+  {country:'United Kingdom', wRank:558, name:`Coventry University`},
+  {country:'Hungary', wRank:563, name:`University of Debrecen`},
+  {country:'United Kingdom', wRank:566, name:`Bangor University`},
+  {country:'Portugal', wRank:566, name:`University of Minho`},
+  {country:'Czechia', wRank:575, name:`Brno University of Technology`},
+  {country:'Germany', wRank:575, name:`Universität Jena`},
+  {country:'Spain', wRank:581, name:`Universidad Pontificia Comillas`},
+  {country:'Iceland', wRank:582, name:`University of Iceland`},
+  {country:'Hungary', wRank:584, name:`Eotvos Lorand University`},
+  {country:'France', wRank:587, name:`Université Claude Bernard Lyon 1`},
+  {country:'France', wRank:587, name:`Université Paul Sabatier Toulouse III`},
+  {country:'Russian Federation', wRank:591, name:`National Research Nuclear University MEPhI (Moscow Engineering Physics Institute)`},
+  {country:'Belgium', wRank:597, name:`Hasselt University`},
+  {country:'Hungary', wRank:597, name:`University of Szeged`},
+  {country:'Finland', wRank:604, name:`University of Eastern Finland`},
+  {country:'Italy', wRank:607, name:`University of Siena`},
+  {country:'United Kingdom', wRank:609, name:`Nottingham Trent University`},
+  {country:'Russian Federation', wRank:609, name:`Peter the Great St.Petersburg Polytechnic University`},
+  {country:'United Kingdom', wRank:609, name:`University of Ulster`},
+  {country:'United Kingdom', wRank:613, name:`University of Plymouth`},
+  {country:'Germany', wRank:618, name:`Christian-Albrechts-Universität zu Kiel`},
+  {country:'Spain', wRank:624, name:`Universidad del Pais Vasco`},
+  {country:'Spain', wRank:628, name:`Universidade de Santiago de Compostela`},
+  {country:'Greece', wRank:628, name:`University of Crete`},
+  {country:'Estonia', wRank:635, name:`Tallinn University of Technology`},
+  {country:'Germany', wRank:635, name:`Universität des Saarlandes`},
+  {country:'United Kingdom', wRank:635, name:`University of Portsmouth`},
+  {country:'Spain', wRank:638, name:`Universidad de Zaragoza`},
+  {country:'Czechia', wRank:638, name:`University of Chemistry and Technology, Prague`},
+  {country:'Switzerland', wRank:642, name:`University of Fribourg`},
+  {country:'Finland', wRank:643, name:`Abo Akademi University`},
+  {country:'Italy', wRank:643, name:`Libera Universita" di Bolzano`},
+  {country:'United Kingdom', wRank:643, name:`Manchester Metropolitan University`},
+  {country:'Norway', wRank:648, name:`University of Tromso, The Arctic University of Norway`},
+  {country:'Russian Federation', wRank:650, name:`MGIMO University`},
+  {country:'Austria', wRank:650, name:`Paris Lodron University of Salzburg`},
+  {country:'Italy', wRank:650, name:`University of Brescia`},
+  {country:'France', wRank:654, name:`Université de Lille`},
+  {country:'Italy', wRank:660, name:`Ca" Foscari University of Venice`},
+  {country:'United Kingdom', wRank:660, name:`Kingston University, London`},
+  {country:'Austria', wRank:668, name:`Karl-Franzens-Universität Graz`},
+  {country:'Czechia', wRank:668, name:`Palacký University in Olomouc`},
+  {country:'Germany', wRank:673, name:`Technische Universität Dortmund`},
+  {country:'Slovakia', wRank:684, name:`Comenius University Bratislava`},
+  {country:'Russian Federation', wRank:688, name:`Tomsk Polytechnic University`},
+  {country:'France', wRank:688, name:`Université Côte d’Azur`},
+  {country:'Germany', wRank:691, name:`Universität Regensburg`},
+  {country:'Germany', wRank:696, name:`TUHH Hamburg University of Technology`},
+  {country:'Spain', wRank:697, name:`Universidad de Alcalá`},
+  {country:'Austria', wRank:697, name:`University of Klagenfurt`},
+  {country:'Croatia', wRank:701, name:`University of Zagreb`},
+  {country:'Hungary', wRank:711, name:`Budapest University of Technology and Economics`},
+  {country:'United Kingdom', wRank:711, name:`Goldsmiths, University of London`},
+  {country:'Portugal', wRank:711, name:`ISCTE - Instituto Universitario de Lisboa`},
+  {country:'Russian Federation', wRank:711, name:`ITMO University`},
+  {country:'Germany', wRank:711, name:`Technische Universität Braunschweig`},
+  {country:'Germany', wRank:711, name:`Universität Hohenheim`},
+  {country:'France', wRank:711, name:`Université de Rennes 1`},
+  {country:'Russian Federation', wRank:721, name:`National University of Science and Technology MISiS`},
+  {country:'Ukraine', wRank:721, name:`Taras Shevchenko National University of Kyiv`},
+  {country:'Greece', wRank:721, name:`University of Patras`},
+  {country:'United Kingdom', wRank:721, name:`UWE Bristol (University of the West of England)`},
+  {country:'Russian Federation', wRank:731, name:`Far Eastern Federal University`},
+  {country:'Bulgaria', wRank:731, name:`Sofia University "St. Kliment Ohridski"`},
+  {country:'United Kingdom', wRank:741, name:`Aberystwyth University`},
+  {country:'Poland', wRank:741, name:`Adam Mickiewicz University`},
+  {country:'Lithuania', wRank:741, name:`Kaunas University of Technology`},
+  {country:'Russian Federation', wRank:741, name:`Plekhanov Russian University of Economics`},
+  {country:'Malta', wRank:741, name:`University of Malta`},
+  {country:'Italy', wRank:741, name:`University of Messina`},
+  {country:'Hungary', wRank:741, name:`University of Pecs`},
+  {country:'Lithuania', wRank:741, name:`Vytautas Magnus University`},
+  {country:'Germany', wRank:751, name:`Martin-Luther-Universität Halle-Wittenberg`},
+  {country:'France', wRank:751, name:`Université de Lorraine`},
+  {country:'Italy', wRank:751, name:`University of Trieste`},
+  {country:'Romania', wRank:761, name:`Babes-Bolyai University`},
+  {country:'Czechia', wRank:761, name:`Czech University of Life Sciences in Prague`},
+  {country:'Latvia', wRank:761, name:`Riga Technical University`},
+  {country:'Serbia', wRank:761, name:`University of Belgrade`},
+  {country:'Romania', wRank:761, name:`University of Bucharest`},
+  {country:'Germany', wRank:771, name:`Philipps-Universität Marburg`},
+  {country:'Spain', wRank:771, name:`Rovira i Virgili University`},
+  {country:'Ireland', wRank:771, name:`University of Maynooth`},
+  {country:'Ireland', wRank:781, name:`Technological University of Dublin`},
+  {country:'Spain', wRank:781, name:`Universidad de Alicante`},
+  {country:'Portugal', wRank:781, name:`Universidade Católica Portuguesa, UCP`},
+  {country:'Belgium', wRank:781, name:`University of Mons`},
+  {country:'Ukraine', wRank:781, name:`V.N. Karazin Kharkiv National University`},
+  {country:'Norway', wRank:791, name:`Norwegian University of Life Sciences (UMB)`},
+  {country:'Poland', wRank:801, name:`AGH University of Krakow`},
+  {country:'United Kingdom', wRank:801, name:`Bournemouth University`},
+  {country:'United Kingdom', wRank:801, name:`De Montfort University`},
+  {country:'Poland', wRank:801, name:`Gdansk University of Technology`},
+  {country:'United Kingdom', wRank:801, name:`Keele University`},
+  {country:'United Kingdom', wRank:801, name:`Middlesex University`},
+  {country:'Ukraine', wRank:801, name:`National Technical University of Ukraine "Igor Sikorsky Kyiv Polytechnic Institute"`},
+  {country:'Italy', wRank:801, name:`Perugia University`},
+  {country:'Italy', wRank:801, name:`Politecnico di Bari`},
+  {country:'Italy', wRank:801, name:`Universita" degli studi di Salerno`},
+  {country:'Italy', wRank:801, name:`Universita" Politecnica delle Marche - UNIVPM`},
+  {country:'Italy', wRank:801, name:`Università\xa0 degli Studi di Palermo`},
+  {country:'Germany', wRank:801, name:`Universität Duisburg-Essen`},
+  {country:'Italy', wRank:801, name:`University of Bari`},
+  {country:'United Kingdom', wRank:801, name:`University of Brighton`},
+  {country:'United Kingdom', wRank:801, name:`University of Greenwich`},
+  {country:'Latvia', wRank:801, name:`University of Latvia`},
+  {country:'United Kingdom', wRank:801, name:`University of Lincoln`},
+  {country:'Italy', wRank:801, name:`University of Modena and Reggio Emilia`},
+  {country:'Belgium', wRank:801, name:`University of Namur`},
+  {country:'United Kingdom', wRank:801, name:`University of Westminster`},
+  {country:'Poland', wRank:801, name:`University of Wroclaw`},
+  {country:'Switzerland', wRank:801, name:`Zurich University of Applied Sciences (ZHAW)`},
+  {country:'Russian Federation', wRank:851, name:`Altai State University`},
+  {country:'Belarus', wRank:851, name:`Belarusian National Technical University`},
+  {country:'Italy', wRank:851, name:`Catania University`},
+  {country:'United Kingdom', wRank:851, name:`Edinburgh Napier University`},
+  {country:'Russian Federation', wRank:851, name:`I.M. Sechenov First Moscow State Medical University`},
+  {country:'United Kingdom', wRank:851, name:`Liverpool John Moores University`},
+  {country:'Czechia', wRank:851, name:`Mendel University in Brno`},
+  {country:'France', wRank:851, name:`Nantes University`},
+  {country:'Spain', wRank:851, name:`Universidade de Vigo`},
+  {country:'Italy', wRank:851, name:`Universita" degli Studi della Tuscia`},
+  {country:'Germany', wRank:851, name:`Universität Düsseldorf`},
+  {country:'Germany', wRank:851, name:`Universität Rostock`},
+  {country:'France', wRank:851, name:`Université de Franche-Comté`},
+  {country:'Poland', wRank:851, name:`University of Gdansk`},
+  {country:'Norway', wRank:851, name:`University of Stavanger`},
+  {country:'Italy', wRank:851, name:`Verona University`},
+  {country:'Lithuania', wRank:851, name:`Vilnius Gediminas Technical University`},
+  {country:'Poland', wRank:851, name:`Wroclaw University of Science and Technology (WUST)`},
+  {country:'United Kingdom', wRank:901, name:`London South Bank University`},
+  {country:'Estonia', wRank:901, name:`Tallinn University`},
+  {country:'Spain', wRank:901, name:`Universidad de Oviedo`},
+  {country:'Spain', wRank:901, name:`Universidad de Valladolid`},
+  {country:'Spain', wRank:901, name:`Universidad Europea de Madrid`},
+  {country:'Italy', wRank:901, name:`Università degli Studi Roma Tre`},
+  {country:'United Kingdom', wRank:901, name:`University of Hertfordshire`},
+  {country:'Slovenia', wRank:901, name:`University of Maribor`},
+  {country:'United Kingdom', wRank:901, name:`University of Salford`},
+  {country:'Greece', wRank:951, name:`Athens University of Economics And Business`},
+  {country:'France', wRank:951, name:`CY Cergy Paris University`},
+  {country:'Russian Federation', wRank:951, name:`Immanuel Kant Baltic Federal University`},
+  {country:'Poland', wRank:951, name:`Lodz University`},
+  {country:'Russian Federation', wRank:951, name:`South Ural State University`},
+  {country:'United Kingdom', wRank:951, name:`The Robert Gordon University`},
+  {country:'Spain', wRank:951, name:`Universidad de Córdoba - España`},
+  {country:'Italy', wRank:951, name:`Universita" degli Studi di Ferrara`},
+  {country:'Italy', wRank:951, name:`Università della Calabria`},
+  {country:'Romania', wRank:1001, name:`Alexandru Ioan Cuza University`},
+  {country:'United Kingdom', wRank:1001, name:`Birmingham City University`},
+  {country:'Spain', wRank:1001, name:`CEU University`},
+  {country:'Poland', wRank:1001, name:`Cracow University of Technology of Tadeusz Kościuszko`},
+  {country:'Russian Federation', wRank:1001, name:`Financial University under the Government of the Russian Federation`},
+  {country:'United Kingdom', wRank:1001, name:`Glasgow Caledonian University`},
+  {country:'United Kingdom', wRank:1001, name:`Leeds Beckett University`},
+  {country:'Russian Federation', wRank:1001, name:`Lobachevsky State University of Nizhni Novgorod`},
+  {country:'Poland', wRank:1001, name:`Lodz University of Technology`},
+  {country:'United Kingdom', wRank:1001, name:`London Metropolitan University`},
+  {country:'Hungary', wRank:1001, name:`MATE Hungarian University of Agriculture and Life Sciences`},
+  {country:'Lithuania', wRank:1001, name:`Mykolas Romeris University`},
+  {country:'Russian Federation', wRank:1001, name:`National Research Saratov State University`},
+  {country:'Ukraine', wRank:1001, name:`National Technical University "Kharkiv Polytechnic Institute"`},
+  {country:'Ukraine', wRank:1001, name:`National University Lviv Polytechnic`},
+  {country:'Poland', wRank:1001, name:`Nicolaus Copernicus University`},
+  {country:'Hungary', wRank:1001, name:`Obuda University`},
+  {country:'Slovakia', wRank:1001, name:`Pavol Josef Safarik University`},
+  {country:'Poland', wRank:1001, name:`Poznan University of Life Sciences`},
+  {country:'Poland', wRank:1001, name:`Poznan University of Technology`},
+  {country:'Latvia', wRank:1001, name:`Riga Stradins University`},
+  {country:'Russian Federation', wRank:1001, name:`Saint-Petersburg Mining University`},
+  {country:'United Kingdom', wRank:1001, name:`Sheffield Hallam University`},
+  {country:'Russian Federation', wRank:1001, name:`Siberian Federal University`},
+  {country:'Poland', wRank:1001, name:`Silesian University of Technology in Gliwice`},
+  {country:'Slovakia', wRank:1001, name:`Slovak University of Technology in Bratislava`},
+  {country:'Russian Federation', wRank:1001, name:`Southern Federal University`},
+  {country:'Ukraine', wRank:1001, name:`Sumy State University`},
+  {country:'Hungary', wRank:1001, name:`Széchenyi István University`},
+  {country:'Slovakia', wRank:1001, name:`Technical University of Kosice`},
+  {country:'Czechia', wRank:1001, name:`Technical University of Ostrava`},
+  {country:'Spain', wRank:1001, name:`Universidad de Castilla-La Mancha`},
+  {country:'Spain', wRank:1001, name:`Universidad de León`},
+  {country:'Spain', wRank:1001, name:`Universidad Rey Juan Carlos`},
+  {country:'Spain', wRank:1001, name:`Universidade da Coruña`},
+  {country:'Italy', wRank:1001, name:`Universita\" degli Studi di Napoli "Parthenope"`},
+  {country:'Italy', wRank:1001, name:`Università degli Studi di Udine`},
+  {country:'Italy', wRank:1001, name:`Universita\xa0degli Studi "G. D\"Annunzio" Chieti-Pescara`},
+  {country:'Germany', wRank:1001, name:`Universität Bielefeld`},
+  {country:'Spain', wRank:1001, name:`Universitat de Lleida`},
+  {country:'Spain', wRank:1001, name:`Universitat Jaume I`},
+  {country:'France', wRank:1001, name:`Université de Bretagne Occidentale (UBO)`},
+  {country:'France', wRank:1001, name:`Université Lumière Lyon 2`},
+  {country:'France', wRank:1001, name:`Université Paris 2 Panthéon-Assas`},
+  {country:'France', wRank:1001, name:`Université Sorbonne Paris Nord`},
+  {country:'France', wRank:1001, name:`Université Toulouse 1, Capitole`},
+  {country:'United Kingdom', wRank:1001, name:`University of Central Lancashire`},
+  {country:'Spain', wRank:1001, name:`University of Deusto`},
+  {country:'United Kingdom', wRank:1001, name:`University of East London`},
+  {country:'Czechia', wRank:1001, name:`University of Hradec Kralove`},
+  {country:'Greece', wRank:1001, name:`University of Ioannina`},
+  {country:'Spain', wRank:1001, name:`University of Murcia`},
+  {country:'Italy', wRank:1001, name:`University of Parma`},
+  {country:'Italy', wRank:1001, name:`University of Salento`},
+  {country:'Czechia', wRank:1001, name:`University of South Bohemia`},
+  {country:'Portugal', wRank:1001, name:`University of the Algarve`},
+  {country:'Poland', wRank:1001, name:`University of Warmia and Mazury in Olsztyn`},
+  {country:'United Kingdom', wRank:1001, name:`University of Wolverhampton`},
+  {country:'Slovakia', wRank:1001, name:`University of Zilina`},
+  {country:'Poland', wRank:1001, name:`Warsaw University of Life Sciences`},
+  {country:'United Kingdom', wRank:1201, name:`Canterbury Christ Church University`},
+  {country:'Ukraine', wRank:1201, name:`Ivan Franko National University of Lviv`},
+  {country:'Ukraine', wRank:1201, name:`Kharkiv National University of Radio Electronics`},
+  {country:'Latvia', wRank:1201, name:`Latvia University of Life Sciences and Technologies`},
+  {country:'Russian Federation', wRank:1201, name:`National Research University Moscow Power Engineering Institute (MPEI)`},
+  {country:'Ukraine', wRank:1201, name:`National University of Kyiv-Mohyla Academy (NaUKMA)`},
+  {country:'Russian Federation', wRank:1201, name:`Novosibirsk State Technical University`},
+  {country:'Ukraine', wRank:1201, name:`Odessa I.I.Mechnikov National University`},
+  {country:'United Kingdom', wRank:1201, name:`Queen Margaret University , Edinburgh`},
+  {country:'Russian Federation', wRank:1201, name:`Saint-Petersburg Electrotechnical University LETI`},
+  {country:'Russian Federation', wRank:1201, name:`Samara National Research University (Samara University)`},
+  {country:'Slovakia', wRank:1201, name:`Slovak University of Agriculture in Nitra`},
+  {country:'Romania', wRank:1201, name:`Technical University of Cluj-Napoca`},
+  {country:'Czechia', wRank:1201, name:`Technical University of Liberec`},
+  {country:'Germany', wRank:1201, name:`Technische Universität Kaiserslautern`},
+  {country:'Romania', wRank:1201, name:`The "Gheorghe Asachi" Technical University of Iasi`},
+  {country:'Russian Federation', wRank:1201, name:`The Russian Presidential Academy of National Economy and Public Administration`},
+  {country:'United Kingdom', wRank:1201, name:`The University of Northampton`},
+  {country:'Czechia', wRank:1201, name:`Tomas Bata University in Zlin`},
+  {country:'Romania', wRank:1201, name:`Transilvania University of Brasov`},
+  {country:'Spain', wRank:1201, name:`UCAM Universidad Católica San Antonio de Murcia`},
+  {country:'Italy', wRank:1201, name:`Universita" degli Studi di Urbino Carlo Bo`},
+  {country:'Germany', wRank:1201, name:`Universität Siegen`},
+  {country:'France', wRank:1201, name:`Université de Caen Normandie`},
+  {country:'France', wRank:1201, name:`Université de Limoges`},
+  {country:'France', wRank:1201, name:`Université de Poitiers`},
+  {country:'France', wRank:1201, name:`Université Jean Moulin Lyon 3`},
+  {country:'France', wRank:1201, name:`Université Paris-Nanterre`},
+  {country:'France', wRank:1201, name:`Université Paul-Valéry Montpellier 3`},
+  {country:'United Kingdom', wRank:1201, name:`University of Derby`},
+  {country:'Hungary', wRank:1201, name:`University of Miskolc`},
+  {country:'Serbia', wRank:1201, name:`University of Novi Sad`},
+  {country:'Czechia', wRank:1201, name:`University of Ostrava`},
+  {country:'Hungary', wRank:1201, name:`University of Pannonia`},
+  {country:'Czechia', wRank:1201, name:`University of Pardubice`},
+  {country:'Slovenia', wRank:1201, name:`University of Primorska`},
+  {country:'Croatia', wRank:1201, name:`University of Rijeka`},
+  {country:'Bosnia and Herzegovina', wRank:1201, name:`University of Sarajevo`},
+  {country:'Poland', wRank:1201, name:`University of Silesia in Katowice`},
+  {country:'Croatia', wRank:1201, name:`University of Split`},
+  {country:'Russian Federation', wRank:1201, name:`University of Tyumen`},
+  {country:'Romania', wRank:1201, name:`University POLITEHNICA of Bucharest`},
+  {country:'France', wRank:1201, name:`University Toulouse – Jean Jaurès`},
+  {country:'Romania', wRank:1201, name:`West University of Timisoara`}
+];
+</script>
 
-const QS = [{"country": "United Kingdom", "wRank": 2, "name": "Imperial College London"}, {"country": "United Kingdom", "wRank": 4, "name": "University of Oxford"}, {"country": "United Kingdom", "wRank": 6, "name": "University of Cambridge"}, {"country": "Switzerland", "wRank": 7, "name": "ETH Zurich (Swiss Federal Institute of Technology)"}, {"country": "United Kingdom", "wRank": 9, "name": "UCL (University College London)"}, {"country": "Switzerland", "wRank": 22, "name": "École Polytechnique Fédérale de Lausanne"}, {"country": "Germany", "wRank": 22, "name": "Technical University of Munich"}, {"country": "France", "wRank": 28, "name": "PSL University"}, {"country": "United Kingdom", "wRank": 31, "name": "King"s College London (KCL)"}, {"country": "United Kingdom", "wRank": 34, "name": "University of Edinburgh"}, {"country": "United Kingdom", "wRank": 35, "name": "The University of Manchester"}, {"country": "France", "wRank": 41, "name": "Institut Polytechnique de Paris"}, {"country": "Netherlands", "wRank": 47, "name": "Delft University of Technology"}, {"country": "United Kingdom", "wRank": 51, "name": "University of Bristol"}, {"country": "Netherlands", "wRank": 53, "name": "The University of Amsterdam"}, {"country": "United Kingdom", "wRank": 56, "name": "London School of Economics and Political Science (LSE)"}, {"country": "Germany", "wRank": 58, "name": "Ludwig-Maximilians-Universität München"}, {"country": "Belgium", "wRank": 60, "name": "KU Leuven"}, {"country": "France", "wRank": 70, "name": "Université Paris-Saclay"}, {"country": "Sweden", "wRank": 72, "name": "Lund University"}, {"country": "France", "wRank": 72, "name": "Sorbonne University (merged from Paris IV & UPMC)"}, {"country": "United Kingdom", "wRank": 74, "name": "The University of Warwick"}, {"country": "Ireland", "wRank": 75, "name": "Trinity College Dublin, The University of Dublin"}, {"country": "United Kingdom", "wRank": 76, "name": "University of Birmingham"}, {"country": "Sweden", "wRank": 78, "name": "KTH Royal Institute of Technology"}, {"country": "United Kingdom", "wRank": 79, "name": "University of Glasgow"}, {"country": "Germany", "wRank": 80, "name": "Ruprecht-Karls-Universität Heidelberg"}, {"country": "United Kingdom", "wRank": 86, "name": "University of Leeds"}, {"country": "United Kingdom", "wRank": 87, "name": "University of Southampton"}, {"country": "Germany", "wRank": 88, "name": "Freie Universität Berlin"}, {"country": "United Kingdom", "wRank": 92, "name": "The University of Sheffield"}, {"country": "Sweden", "wRank": 93, "name": "Uppsala University"}, {"country": "United Kingdom", "wRank": 94, "name": "Durham University"}, {"country": "United Kingdom", "wRank": 97, "name": "The University of Nottingham"}, {"country": "Germany", "wRank": 98, "name": "Karlsruhe Institute of Technology (KIT)"}, {"country": "Italy", "wRank": 98, "name": "Politecnico di Milano"}, {"country": "Switzerland", "wRank": 100, "name": "University of Zurich (UZH)"}, {"country": "Denmark", "wRank": 101, "name": "University of Copenhagen"}, {"country": "Netherlands", "wRank": 103, "name": "Utrecht University"}, {"country": "Russian Federation", "wRank": 105, "name": "Lomonosov Moscow State University"}, {"country": "Germany", "wRank": 105, "name": "Rheinisch-Westfälische Technische Hochschule Aachen"}, {"country": "Denmark", "wRank": 107, "name": "Technical University of Denmark"}, {"country": "United Kingdom", "wRank": 110, "name": "Queen Mary University of London (QMUL)"}, {"country": "United Kingdom", "wRank": 113, "name": "University of St Andrews"}, {"country": "Finland", "wRank": 114, "name": "Aalto University"}, {"country": "Finland", "wRank": 116, "name": "University of Helsinki"}, {"country": "Ireland", "wRank": 118, "name": "University College Dublin"}, {"country": "Netherlands", "wRank": 119, "name": "Leiden University"}, {"country": "Norway", "wRank": 119, "name": "University of Oslo"}, {"country": "Italy", "wRank": 128, "name": "Sapienza University of Rome"}, {"country": "Germany", "wRank": 130, "name": "Humboldt-Universität zu Berlin"}, {"country": "Denmark", "wRank": 131, "name": "Aarhus University"}, {"country": "United Kingdom", "wRank": 132, "name": "University of Bath"}, {"country": "United Kingdom", "wRank": 137, "name": "Newcastle University"}, {"country": "Italy", "wRank": 138, "name": "Alma Mater Studiorum - University of Bologna"}, {"country": "Netherlands", "wRank": 140, "name": "Eindhoven University of Technology"}, {"country": "Netherlands", "wRank": 140, "name": "Erasmus University Rotterdam"}, {"country": "Germany", "wRank": 145, "name": "Technische Universität Berlin"}, {"country": "Sweden", "wRank": 147, "name": "Stockholm University"}, {"country": "Netherlands", "wRank": 147, "name": "University of Groningen"}, {"country": "United Kingdom", "wRank": 147, "name": "University of Liverpool"}, {"country": "Austria", "wRank": 152, "name": "University of Vienna"}, {"country": "Netherlands", "wRank": 153, "name": "Wageningen University & Research"}, {"country": "United Kingdom", "wRank": 155, "name": "University of Exeter"}, {"country": "Switzerland", "wRank": 155, "name": "University of Geneva"}, {"country": "United Kingdom", "wRank": 157, "name": "Lancaster University"}, {"country": "Switzerland", "wRank": 158, "name": "University of Basel"}, {"country": "Spain", "wRank": 160, "name": "University of Barcelona"}, {"country": "Belgium", "wRank": 162, "name": "Ghent University"}, {"country": "Sweden", "wRank": 165, "name": "Chalmers University of Technology"}, {"country": "United Kingdom", "wRank": 169, "name": "University of York"}, {"country": "Spain", "wRank": 172, "name": "Universitat Autónoma de Barcelona"}, {"country": "United Kingdom", "wRank": 181, "name": "Cardiff University"}, {"country": "Switzerland", "wRank": 184, "name": "University of Bern"}, {"country": "Spain", "wRank": 187, "name": "University Complutense Madrid"}, {"country": "Belgium", "wRank": 191, "name": "Université Catholique de Louvain (UCL)"}, {"country": "Germany", "wRank": 193, "name": "Universität Hamburg"}, {"country": "United Kingdom", "wRank": 194, "name": "University of Reading"}, {"country": "Netherlands", "wRank": 194, "name": "Vrije Universiteit Amsterdam"}, {"country": "Austria", "wRank": 197, "name": "Vienna University of Technology"}, {"country": "United Kingdom", "wRank": 199, "name": "Queen"s University Belfast"}, {"country": "Germany", "wRank": 201, "name": "Universität Freiburg"}, {"country": "Sweden", "wRank": 202, "name": "University of Gothenburg"}, {"country": "Netherlands", "wRank": 203, "name": "University of Twente"}, {"country": "France", "wRank": 205, "name": "Ecole Normale Supérieure de Lyon"}, {"country": "Spain", "wRank": 206, "name": "Universidad Autónoma de Madrid"}, {"country": "Germany", "wRank": 207, "name": "Rheinische Friedrich-Wilhelms-Universität Bonn"}, {"country": "Switzerland", "wRank": 212, "name": "University of Lausanne"}, {"country": "Germany", "wRank": 215, "name": "Eberhard Karls Universität Tübingen"}, {"country": "Germany", "wRank": 218, "name": "Technische Universität Dresden"}, {"country": "United Kingdom", "wRank": 225, "name": "Loughborough University"}, {"country": "Belgium", "wRank": 227, "name": "Université Libre de Bruxelles (ULB)"}, {"country": "Portugal", "wRank": 230, "name": "University of Lisbon"}, {"country": "Germany", "wRank": 232, "name": "Universität Erlangen-Nürnberg"}, {"country": "Italy", "wRank": 233, "name": "University of Padova"}, {"country": "Portugal", "wRank": 237, "name": "University of Porto"}, {"country": "Netherlands", "wRank": 239, "name": "Maastricht University"}, {"country": "Italy", "wRank": 242, "name": "Politecnico di Torino"}, {"country": "Germany", "wRank": 243, "name": "Georg-August-Universität Göttingen"}, {"country": "Ireland", "wRank": 246, "name": "University College Cork"}, {"country": "United Kingdom", "wRank": 251, "name": "University of Strathclyde"}, {"country": "Germany", "wRank": 253, "name": "Technische Universität Darmstadt"}, {"country": "France", "wRank": 257, "name": "Université Paris 1 Panthéon-Sorbonne"}, {"country": "United Kingdom", "wRank": 262, "name": "University of Aberdeen"}, {"country": "Spain", "wRank": 262, "name": "University of Navarra"}, {"country": "United Kingdom", "wRank": 262, "name": "University of Surrey"}, {"country": "Czechia", "wRank": 265, "name": "Charles University"}, {"country": "Spain", "wRank": 265, "name": "Universitat Pompeu Fabra"}, {"country": "Norway", "wRank": 267, "name": "Norwegian University of Science And Technology"}, {"country": "Poland", "wRank": 271, "name": "University of Warsaw"}, {"country": "Germany", "wRank": 272, "name": "Universität zu Köln"}, {"country": "Italy", "wRank": 276, "name": "University of Milan"}, {"country": "United Kingdom", "wRank": 278, "name": "University of Sussex"}, {"country": "Netherlands", "wRank": 279, "name": "Radboud University Nijmegen"}, {"country": "Belgium", "wRank": 280, "name": "University of Antwerp"}, {"country": "Ireland", "wRank": 284, "name": "University of Galway / Ollscoil na Gaillimhe"}, {"country": "United Kingdom", "wRank": 287, "name": "Heriot-Watt University"}, {"country": "Norway", "wRank": 287, "name": "University of Bergen"}, {"country": "United Kingdom", "wRank": 292, "name": "Swansea University"}, {"country": "Belgium", "wRank": 294, "name": "Vrije Universiteit Brussel (VUB)"}, {"country": "France", "wRank": 300, "name": "Université Paris Cité"}, {"country": "Spain", "wRank": 301, "name": "Universidad Carlos III de Madrid"}, {"country": "Poland", "wRank": 303, "name": "Jagiellonian University"}, {"country": "Denmark", "wRank": 303, "name": "University of Southern Denmark"}, {"country": "Denmark", "wRank": 306, "name": "Aalborg University"}, {"country": "United Kingdom", "wRank": 310, "name": "City St George’s, University of London"}, {"country": "Sweden", "wRank": 310, "name": "Linköping University"}, {"country": "Germany", "wRank": 310, "name": "Universität Stuttgart"}, {"country": "Germany", "wRank": 316, "name": "Goethe Universität Frankfurt am Main"}, {"country": "Russian Federation", "wRank": 320, "name": "Bauman Moscow State Technical University"}, {"country": "France", "wRank": 321, "name": "Université Grenoble Alpes"}, {"country": "United Kingdom", "wRank": 326, "name": "University of Leicester"}, {"country": "Portugal", "wRank": 327, "name": "Universidade Nova de Lisboa"}, {"country": "Spain", "wRank": 334, "name": "Universidad Politécnica de Madrid"}, {"country": "Finland", "wRank": 342, "name": "University of Oulu"}, {"country": "Italy", "wRank": 343, "name": "University of Pisa"}, {"country": "Netherlands", "wRank": 347, "name": "Tilburg University"}, {"country": "Portugal", "wRank": 347, "name": "University of Coimbra"}, {"country": "Austria", "wRank": 350, "name": "Universität Innsbruck"}, {"country": "Germany", "wRank": 350, "name": "University of Münster"}, {"country": "Greece", "wRank": 355, "name": "National Technical University of Athens"}, {"country": "Italy", "wRank": 355, "name": "Università degli Studi di Roma - Tor Vergata"}, {"country": "Estonia", "wRank": 362, "name": "University of Tartu"}, {"country": "Finland", "wRank": 366, "name": "University of Turku"}, {"country": "Russian Federation", "wRank": 367, "name": "RUDN University"}, {"country": "France", "wRank": 367, "name": "Sciences Po Paris"}, {"country": "United Kingdom", "wRank": 374, "name": "Oxford Brookes University"}, {"country": "Russian Federation", "wRank": 375, "name": "Saint Petersburg State University"}, {"country": "Belgium", "wRank": 379, "name": "University of Liege"}, {"country": "Italy", "wRank": 379, "name": "University of Naples - Federico II"}, {"country": "United Kingdom", "wRank": 381, "name": "University of East Anglia (UEA)"}, {"country": "Luxembourg", "wRank": 381, "name": "University of Luxembourg"}, {"country": "United Kingdom", "wRank": 385, "name": "Brunel University of London"}, {"country": "United Kingdom", "wRank": 388, "name": "Birkbeck College, University of London"}, {"country": "Greece", "wRank": 390, "name": "National and Kapodistrian University of Athens"}, {"country": "Spain", "wRank": 392, "name": "Universitat Politècnica de Catalunya"}, {"country": "United Kingdom", "wRank": 395, "name": "Aston University"}, {"country": "Germany", "wRank": 395, "name": "Ruhr-Universität Bochum"}, {"country": "Finland", "wRank": 397, "name": "Lappeenranta-Lahti University of Technology LUT"}, {"country": "United Kingdom", "wRank": 397, "name": "University of Kent"}, {"country": "Sweden", "wRank": 401, "name": "Umeå University"}, {"country": "Spain", "wRank": 401, "name": "University of Granada"}, {"country": "Ireland", "wRank": 401, "name": "University of Limerick"}, {"country": "Italy", "wRank": 404, "name": "University of Florence"}, {"country": "France", "wRank": 406, "name": "Institut National des Sciences Appliquées de Lyon (INSA)"}, {"country": "Italy", "wRank": 408, "name": "University of Turin"}, {"country": "Italy", "wRank": 409, "name": "Università\xa0 Cattolica del Sacro Cuore"}, {"country": "Ireland", "wRank": 410, "name": "Dublin City University"}, {"country": "Czechia", "wRank": 416, "name": "Czech Technical University In Prague"}, {"country": "Germany", "wRank": 416, "name": "Julius-Maximilians-Universität Würzburg"}, {"country": "Germany", "wRank": 416, "name": "Universität Mannheim"}, {"country": "Portugal", "wRank": 419, "name": "University of Aveiro"}, {"country": "France", "wRank": 420, "name": "Université de Strasbourg"}, {"country": "Spain", "wRank": 422, "name": "Universitat Politecnica de Valencia"}, {"country": "Finland", "wRank": 423, "name": "Tampere University"}, {"country": "Italy", "wRank": 423, "name": "Università\xa0 degli Studi di Pavia"}, {"country": "Austria", "wRank": 427, "name": "Graz University of Technology"}, {"country": "France", "wRank": 428, "name": "Aix-Marseille University"}, {"country": "United Kingdom", "wRank": 428, "name": "University of Dundee"}, {"country": "Czechia", "wRank": 430, "name": "Masaryk University"}, {"country": "Spain", "wRank": 430, "name": "Universitat de Valencia"}, {"country": "France", "wRank": 430, "name": "Université de Montpellier"}, {"country": "Germany", "wRank": 433, "name": "Leibniz Universität Hannover"}, {"country": "Spain", "wRank": 436, "name": "Universitat Ramon Llull"}, {"country": "Spain", "wRank": 438, "name": "IE University"}, {"country": "Russian Federation", "wRank": 440, "name": "National Research University Higher School of Economics (HSE, Moscow)"}, {"country": "Germany", "wRank": 440, "name": "Universität Konstanz"}, {"country": "Lithuania", "wRank": 446, "name": "Vilnius University"}, {"country": "Belarus", "wRank": 447, "name": "Belarusian State University"}, {"country": "Germany", "wRank": 448, "name": "Universität Bayreuth"}, {"country": "Russian Federation", "wRank": 450, "name": "Kazan Federal University"}, {"country": "Germany", "wRank": 452, "name": "Johannes Gutenberg Universität Mainz"}, {"country": "United Kingdom", "wRank": 456, "name": "University of Essex"}, {"country": "Russian Federation", "wRank": 461, "name": "Novosibirsk State University"}, {"country": "United Kingdom", "wRank": 461, "name": "Royal Holloway University of London"}, {"country": "Italy", "wRank": 461, "name": "Università Vita-Salute San Raffaele"}, {"country": "Spain", "wRank": 469, "name": "Universidad de Sevilla"}, {"country": "Austria", "wRank": 473, "name": "Johannes Kepler University Linz"}, {"country": "Switzerland", "wRank": 473, "name": "Università della Svizzera Italiana"}, {"country": "Russian Federation", "wRank": 477, "name": "Moscow Institute of Physics and Technology State University"}, {"country": "Germany", "wRank": 477, "name": "Universität Potsdam"}, {"country": "Greece", "wRank": 485, "name": "Aristotle University of Thessaloniki"}, {"country": "Italy", "wRank": 485, "name": "University of Trento"}, {"country": "Germany", "wRank": 487, "name": "Technische Universität Bergakademie Freiberg"}, {"country": "Poland", "wRank": 487, "name": "Warsaw University of Technology"}, {"country": "France", "wRank": 494, "name": "Université de Bordeaux"}, {"country": "Germany", "wRank": 496, "name": "Justus-Liebig-Universität Gießen"}, {"country": "Finland", "wRank": 498, "name": "University of Jyväskylä"}, {"country": "Russian Federation", "wRank": 499, "name": "Tomsk State University"}, {"country": "United Kingdom", "wRank": 511, "name": "SOAS University of London"}, {"country": "United Kingdom", "wRank": 511, "name": "University of Bradford"}, {"country": "United Kingdom", "wRank": 517, "name": "University of Stirling"}, {"country": "Russian Federation", "wRank": 519, "name": "Ural Federal University"}, {"country": "United Kingdom", "wRank": 524, "name": "University of Huddersfield"}, {"country": "United Kingdom", "wRank": 526, "name": "University of Hull"}, {"country": "Spain", "wRank": 526, "name": "University of Salamanca"}, {"country": "Germany", "wRank": 530, "name": "Universität Bremen"}, {"country": "Italy", "wRank": 530, "name": "University of Genoa"}, {"country": "Germany", "wRank": 535, "name": "Universität Leipzig"}, {"country": "Slovenia", "wRank": 535, "name": "University of Ljubljana"}, {"country": "Italy", "wRank": 542, "name": "University of Milano-Bicocca"}, {"country": "Germany", "wRank": 546, "name": "Universität Ulm"}, {"country": "United Kingdom", "wRank": 550, "name": "Northumbria University at Newcastle"}, {"country": "United Kingdom", "wRank": 558, "name": "Coventry University"}, {"country": "Hungary", "wRank": 563, "name": "University of Debrecen"}, {"country": "United Kingdom", "wRank": 566, "name": "Bangor University"}, {"country": "Portugal", "wRank": 566, "name": "University of Minho"}, {"country": "Czechia", "wRank": 575, "name": "Brno University of Technology"}, {"country": "Germany", "wRank": 575, "name": "Universität Jena"}, {"country": "Spain", "wRank": 581, "name": "Universidad Pontificia Comillas"}, {"country": "Iceland", "wRank": 582, "name": "University of Iceland"}, {"country": "Hungary", "wRank": 584, "name": "Eotvos Lorand University"}, {"country": "France", "wRank": 587, "name": "Université Claude Bernard Lyon 1"}, {"country": "France", "wRank": 587, "name": "Université Paul Sabatier Toulouse III"}, {"country": "Russian Federation", "wRank": 591, "name": "National Research Nuclear University MEPhI (Moscow Engineering Physics Institute)"}, {"country": "Belgium", "wRank": 597, "name": "Hasselt University"}, {"country": "Hungary", "wRank": 597, "name": "University of Szeged"}, {"country": "Finland", "wRank": 604, "name": "University of Eastern Finland"}, {"country": "Italy", "wRank": 607, "name": "University of Siena"}, {"country": "United Kingdom", "wRank": 609, "name": "Nottingham Trent University"}, {"country": "Russian Federation", "wRank": 609, "name": "Peter the Great St.Petersburg Polytechnic University"}, {"country": "United Kingdom", "wRank": 609, "name": "University of Ulster"}, {"country": "United Kingdom", "wRank": 613, "name": "University of Plymouth"}, {"country": "Germany", "wRank": 618, "name": "Christian-Albrechts-Universität zu Kiel"}, {"country": "Spain", "wRank": 624, "name": "Universidad del Pais Vasco"}, {"country": "Spain", "wRank": 628, "name": "Universidade de Santiago de Compostela"}, {"country": "Greece", "wRank": 628, "name": "University of Crete"}, {"country": "Estonia", "wRank": 635, "name": "Tallinn University of Technology"}, {"country": "Germany", "wRank": 635, "name": "Universität des Saarlandes"}, {"country": "United Kingdom", "wRank": 635, "name": "University of Portsmouth"}, {"country": "Spain", "wRank": 638, "name": "Universidad de Zaragoza"}, {"country": "Czechia", "wRank": 638, "name": "University of Chemistry and Technology, Prague"}, {"country": "Switzerland", "wRank": 642, "name": "University of Fribourg"}, {"country": "Finland", "wRank": 643, "name": "Abo Akademi University"}, {"country": "Italy", "wRank": 643, "name": "Libera Universita" di Bolzano"}, {"country": "United Kingdom", "wRank": 643, "name": "Manchester Metropolitan University"}, {"country": "Norway", "wRank": 648, "name": "University of Tromso, The Arctic University of Norway"}, {"country": "Russian Federation", "wRank": 650, "name": "MGIMO University"}, {"country": "Austria", "wRank": 650, "name": "Paris Lodron University of Salzburg"}, {"country": "Italy", "wRank": 650, "name": "University of Brescia"}, {"country": "France", "wRank": 654, "name": "Université de Lille"}, {"country": "Italy", "wRank": 660, "name": "Ca" Foscari University of Venice"}, {"country": "United Kingdom", "wRank": 660, "name": "Kingston University, London"}, {"country": "Austria", "wRank": 668, "name": "Karl-Franzens-Universität Graz"}, {"country": "Czechia", "wRank": 668, "name": "Palacký University in Olomouc"}, {"country": "Germany", "wRank": 673, "name": "Technische Universität Dortmund"}, {"country": "Slovakia", "wRank": 684, "name": "Comenius University Bratislava"}, {"country": "Russian Federation", "wRank": 688, "name": "Tomsk Polytechnic University"}, {"country": "France", "wRank": 688, "name": "Université Côte d’Azur"}, {"country": "Germany", "wRank": 691, "name": "Universität Regensburg"}, {"country": "Germany", "wRank": 696, "name": "TUHH Hamburg University of Technology"}, {"country": "Spain", "wRank": 697, "name": "Universidad de Alcalá"}, {"country": "Austria", "wRank": 697, "name": "University of Klagenfurt"}, {"country": "Croatia", "wRank": 701, "name": "University of Zagreb"}, {"country": "Hungary", "wRank": 711, "name": "Budapest University of Technology and Economics"}, {"country": "United Kingdom", "wRank": 711, "name": "Goldsmiths, University of London"}, {"country": "Portugal", "wRank": 711, "name": "ISCTE - Instituto Universitario de Lisboa"}, {"country": "Russian Federation", "wRank": 711, "name": "ITMO University"}, {"country": "Germany", "wRank": 711, "name": "Technische Universität Braunschweig"}, {"country": "Germany", "wRank": 711, "name": "Universität Hohenheim"}, {"country": "France", "wRank": 711, "name": "Université de Rennes 1"}, {"country": "Russian Federation", "wRank": 721, "name": "National University of Science and Technology MISiS"}, {"country": "Ukraine", "wRank": 721, "name": "Taras Shevchenko National University of Kyiv"}, {"country": "Greece", "wRank": 721, "name": "University of Patras"}, {"country": "United Kingdom", "wRank": 721, "name": "UWE Bristol (University of the West of England)"}, {"country": "Russian Federation", "wRank": 731, "name": "Far Eastern Federal University"}, {"country": "Bulgaria", "wRank": 731, "name": "Sofia University "St. Kliment Ohridski""}, {"country": "United Kingdom", "wRank": 741, "name": "Aberystwyth University"}, {"country": "Poland", "wRank": 741, "name": "Adam Mickiewicz University"}, {"country": "Lithuania", "wRank": 741, "name": "Kaunas University of Technology"}, {"country": "Russian Federation", "wRank": 741, "name": "Plekhanov Russian University of Economics"}, {"country": "Malta", "wRank": 741, "name": "University of Malta"}, {"country": "Italy", "wRank": 741, "name": "University of Messina"}, {"country": "Hungary", "wRank": 741, "name": "University of Pecs"}, {"country": "Lithuania", "wRank": 741, "name": "Vytautas Magnus University"}, {"country": "Germany", "wRank": 751, "name": "Martin-Luther-Universität Halle-Wittenberg"}, {"country": "France", "wRank": 751, "name": "Université de Lorraine"}, {"country": "Italy", "wRank": 751, "name": "University of Trieste"}, {"country": "Romania", "wRank": 761, "name": "Babes-Bolyai University"}, {"country": "Czechia", "wRank": 761, "name": "Czech University of Life Sciences in Prague"}, {"country": "Latvia", "wRank": 761, "name": "Riga Technical University"}, {"country": "Serbia", "wRank": 761, "name": "University of Belgrade"}, {"country": "Romania", "wRank": 761, "name": "University of Bucharest"}, {"country": "Germany", "wRank": 771, "name": "Philipps-Universität Marburg"}, {"country": "Spain", "wRank": 771, "name": "Rovira i Virgili University"}, {"country": "Ireland", "wRank": 771, "name": "University of Maynooth"}, {"country": "Ireland", "wRank": 781, "name": "Technological University of Dublin"}, {"country": "Spain", "wRank": 781, "name": "Universidad de Alicante"}, {"country": "Portugal", "wRank": 781, "name": "Universidade Católica Portuguesa, UCP"}, {"country": "Belgium", "wRank": 781, "name": "University of Mons"}, {"country": "Ukraine", "wRank": 781, "name": "V.N. Karazin Kharkiv National University"}, {"country": "Norway", "wRank": 791, "name": "Norwegian University of Life Sciences (UMB)"}, {"country": "Poland", "wRank": 801, "name": "AGH University of Krakow"}, {"country": "United Kingdom", "wRank": 801, "name": "Bournemouth University"}, {"country": "United Kingdom", "wRank": 801, "name": "De Montfort University"}, {"country": "Poland", "wRank": 801, "name": "Gdansk University of Technology"}, {"country": "United Kingdom", "wRank": 801, "name": "Keele University"}, {"country": "United Kingdom", "wRank": 801, "name": "Middlesex University"}, {"country": "Ukraine", "wRank": 801, "name": "National Technical University of Ukraine "Igor Sikorsky Kyiv Polytechnic Institute""}, {"country": "Italy", "wRank": 801, "name": "Perugia University"}, {"country": "Italy", "wRank": 801, "name": "Politecnico di Bari"}, {"country": "Italy", "wRank": 801, "name": "Universita" degli studi di Salerno"}, {"country": "Italy", "wRank": 801, "name": "Universita" Politecnica delle Marche - UNIVPM"}, {"country": "Italy", "wRank": 801, "name": "Università\xa0 degli Studi di Palermo"}, {"country": "Germany", "wRank": 801, "name": "Universität Duisburg-Essen"}, {"country": "Italy", "wRank": 801, "name": "University of Bari"}, {"country": "United Kingdom", "wRank": 801, "name": "University of Brighton"}, {"country": "United Kingdom", "wRank": 801, "name": "University of Greenwich"}, {"country": "Latvia", "wRank": 801, "name": "University of Latvia"}, {"country": "United Kingdom", "wRank": 801, "name": "University of Lincoln"}, {"country": "Italy", "wRank": 801, "name": "University of Modena and Reggio Emilia"}, {"country": "Belgium", "wRank": 801, "name": "University of Namur"}, {"country": "United Kingdom", "wRank": 801, "name": "University of Westminster"}, {"country": "Poland", "wRank": 801, "name": "University of Wroclaw"}, {"country": "Switzerland", "wRank": 801, "name": "Zurich University of Applied Sciences (ZHAW)"}, {"country": "Russian Federation", "wRank": 851, "name": "Altai State University"}, {"country": "Belarus", "wRank": 851, "name": "Belarusian National Technical University"}, {"country": "Italy", "wRank": 851, "name": "Catania University"}, {"country": "United Kingdom", "wRank": 851, "name": "Edinburgh Napier University"}, {"country": "Russian Federation", "wRank": 851, "name": "I.M. Sechenov First Moscow State Medical University"}, {"country": "United Kingdom", "wRank": 851, "name": "Liverpool John Moores University"}, {"country": "Czechia", "wRank": 851, "name": "Mendel University in Brno"}, {"country": "France", "wRank": 851, "name": "Nantes University"}, {"country": "Spain", "wRank": 851, "name": "Universidade de Vigo"}, {"country": "Italy", "wRank": 851, "name": "Universita" degli Studi della Tuscia"}, {"country": "Germany", "wRank": 851, "name": "Universität Düsseldorf"}, {"country": "Germany", "wRank": 851, "name": "Universität Rostock"}, {"country": "France", "wRank": 851, "name": "Université de Franche-Comté"}, {"country": "Poland", "wRank": 851, "name": "University of Gdansk"}, {"country": "Norway", "wRank": 851, "name": "University of Stavanger"}, {"country": "Italy", "wRank": 851, "name": "Verona University"}, {"country": "Lithuania", "wRank": 851, "name": "Vilnius Gediminas Technical University"}, {"country": "Poland", "wRank": 851, "name": "Wroclaw University of Science and Technology (WUST)"}, {"country": "United Kingdom", "wRank": 901, "name": "London South Bank University"}, {"country": "Estonia", "wRank": 901, "name": "Tallinn University"}, {"country": "Spain", "wRank": 901, "name": "Universidad de Oviedo"}, {"country": "Spain", "wRank": 901, "name": "Universidad de Valladolid"}, {"country": "Spain", "wRank": 901, "name": "Universidad Europea de Madrid"}, {"country": "Italy", "wRank": 901, "name": "Università degli Studi Roma Tre"}, {"country": "United Kingdom", "wRank": 901, "name": "University of Hertfordshire"}, {"country": "Slovenia", "wRank": 901, "name": "University of Maribor"}, {"country": "United Kingdom", "wRank": 901, "name": "University of Salford"}, {"country": "Greece", "wRank": 951, "name": "Athens University of Economics And Business"}, {"country": "France", "wRank": 951, "name": "CY Cergy Paris University"}, {"country": "Russian Federation", "wRank": 951, "name": "Immanuel Kant Baltic Federal University"}, {"country": "Poland", "wRank": 951, "name": "Lodz University"}, {"country": "Russian Federation", "wRank": 951, "name": "South Ural State University"}, {"country": "United Kingdom", "wRank": 951, "name": "The Robert Gordon University"}, {"country": "Spain", "wRank": 951, "name": "Universidad de Córdoba - España"}, {"country": "Italy", "wRank": 951, "name": "Universita" degli Studi di Ferrara"}, {"country": "Italy", "wRank": 951, "name": "Università della Calabria"}, {"country": "Romania", "wRank": 1001, "name": "Alexandru Ioan Cuza University"}, {"country": "United Kingdom", "wRank": 1001, "name": "Birmingham City University"}, {"country": "Spain", "wRank": 1001, "name": "CEU University"}, {"country": "Poland", "wRank": 1001, "name": "Cracow University of Technology of Tadeusz Kościuszko"}, {"country": "Russian Federation", "wRank": 1001, "name": "Financial University under the Government of the Russian Federation"}, {"country": "United Kingdom", "wRank": 1001, "name": "Glasgow Caledonian University"}, {"country": "United Kingdom", "wRank": 1001, "name": "Leeds Beckett University"}, {"country": "Russian Federation", "wRank": 1001, "name": "Lobachevsky State University of Nizhni Novgorod"}, {"country": "Poland", "wRank": 1001, "name": "Lodz University of Technology"}, {"country": "United Kingdom", "wRank": 1001, "name": "London Metropolitan University"}, {"country": "Hungary", "wRank": 1001, "name": "MATE Hungarian University of Agriculture and Life Sciences"}, {"country": "Lithuania", "wRank": 1001, "name": "Mykolas Romeris University"}, {"country": "Russian Federation", "wRank": 1001, "name": "National Research Saratov State University"}, {"country": "Ukraine", "wRank": 1001, "name": "National Technical University "Kharkiv Polytechnic Institute""}, {"country": "Ukraine", "wRank": 1001, "name": "National University Lviv Polytechnic"}, {"country": "Poland", "wRank": 1001, "name": "Nicolaus Copernicus University"}, {"country": "Hungary", "wRank": 1001, "name": "Obuda University"}, {"country": "Slovakia", "wRank": 1001, "name": "Pavol Josef Safarik University"}, {"country": "Poland", "wRank": 1001, "name": "Poznan University of Life Sciences"}, {"country": "Poland", "wRank": 1001, "name": "Poznan University of Technology"}, {"country": "Latvia", "wRank": 1001, "name": "Riga Stradins University"}, {"country": "Russian Federation", "wRank": 1001, "name": "Saint-Petersburg Mining University"}, {"country": "United Kingdom", "wRank": 1001, "name": "Sheffield Hallam University"}, {"country": "Russian Federation", "wRank": 1001, "name": "Siberian Federal University"}, {"country": "Poland", "wRank": 1001, "name": "Silesian University of Technology in Gliwice"}, {"country": "Slovakia", "wRank": 1001, "name": "Slovak University of Technology in Bratislava"}, {"country": "Russian Federation", "wRank": 1001, "name": "Southern Federal University"}, {"country": "Ukraine", "wRank": 1001, "name": "Sumy State University"}, {"country": "Hungary", "wRank": 1001, "name": "Széchenyi István University"}, {"country": "Slovakia", "wRank": 1001, "name": "Technical University of Kosice"}, {"country": "Czechia", "wRank": 1001, "name": "Technical University of Ostrava"}, {"country": "Spain", "wRank": 1001, "name": "Universidad de Castilla-La Mancha"}, {"country": "Spain", "wRank": 1001, "name": "Universidad de León"}, {"country": "Spain", "wRank": 1001, "name": "Universidad Rey Juan Carlos"}, {"country": "Spain", "wRank": 1001, "name": "Universidade da Coruña"}, {"country": "Italy", "wRank": 1001, "name": "Universita\" degli Studi di Napoli "Parthenope""}, {"country": "Italy", "wRank": 1001, "name": "Università degli Studi di Udine"}, {"country": "Italy", "wRank": 1001, "name": "Universita\xa0degli Studi "G. D\"Annunzio" Chieti-Pescara"}, {"country": "Germany", "wRank": 1001, "name": "Universität Bielefeld"}, {"country": "Spain", "wRank": 1001, "name": "Universitat de Lleida"}, {"country": "Spain", "wRank": 1001, "name": "Universitat Jaume I"}, {"country": "France", "wRank": 1001, "name": "Université de Bretagne Occidentale (UBO)"}, {"country": "France", "wRank": 1001, "name": "Université Lumière Lyon 2"}, {"country": "France", "wRank": 1001, "name": "Université Paris 2 Panthéon-Assas"}, {"country": "France", "wRank": 1001, "name": "Université Sorbonne Paris Nord"}, {"country": "France", "wRank": 1001, "name": "Université Toulouse 1, Capitole"}, {"country": "United Kingdom", "wRank": 1001, "name": "University of Central Lancashire"}, {"country": "Spain", "wRank": 1001, "name": "University of Deusto"}, {"country": "United Kingdom", "wRank": 1001, "name": "University of East London"}, {"country": "Czechia", "wRank": 1001, "name": "University of Hradec Kralove"}, {"country": "Greece", "wRank": 1001, "name": "University of Ioannina"}, {"country": "Spain", "wRank": 1001, "name": "University of Murcia"}, {"country": "Italy", "wRank": 1001, "name": "University of Parma"}, {"country": "Italy", "wRank": 1001, "name": "University of Salento"}, {"country": "Czechia", "wRank": 1001, "name": "University of South Bohemia"}, {"country": "Portugal", "wRank": 1001, "name": "University of the Algarve"}, {"country": "Poland", "wRank": 1001, "name": "University of Warmia and Mazury in Olsztyn"}, {"country": "United Kingdom", "wRank": 1001, "name": "University of Wolverhampton"}, {"country": "Slovakia", "wRank": 1001, "name": "University of Zilina"}, {"country": "Poland", "wRank": 1001, "name": "Warsaw University of Life Sciences"}, {"country": "United Kingdom", "wRank": 1201, "name": "Canterbury Christ Church University"}, {"country": "Ukraine", "wRank": 1201, "name": "Ivan Franko National University of Lviv"}, {"country": "Ukraine", "wRank": 1201, "name": "Kharkiv National University of Radio Electronics"}, {"country": "Latvia", "wRank": 1201, "name": "Latvia University of Life Sciences and Technologies"}, {"country": "Russian Federation", "wRank": 1201, "name": "National Research University Moscow Power Engineering Institute (MPEI)"}, {"country": "Ukraine", "wRank": 1201, "name": "National University of Kyiv-Mohyla Academy (NaUKMA)"}, {"country": "Russian Federation", "wRank": 1201, "name": "Novosibirsk State Technical University"}, {"country": "Ukraine", "wRank": 1201, "name": "Odessa I.I.Mechnikov National University"}, {"country": "United Kingdom", "wRank": 1201, "name": "Queen Margaret University , Edinburgh"}, {"country": "Russian Federation", "wRank": 1201, "name": "Saint-Petersburg Electrotechnical University LETI"}, {"country": "Russian Federation", "wRank": 1201, "name": "Samara National Research University (Samara University)"}, {"country": "Slovakia", "wRank": 1201, "name": "Slovak University of Agriculture in Nitra"}, {"country": "Romania", "wRank": 1201, "name": "Technical University of Cluj-Napoca"}, {"country": "Czechia", "wRank": 1201, "name": "Technical University of Liberec"}, {"country": "Germany", "wRank": 1201, "name": "Technische Universität Kaiserslautern"}, {"country": "Romania", "wRank": 1201, "name": "The "Gheorghe Asachi" Technical University of Iasi"}, {"country": "Russian Federation", "wRank": 1201, "name": "The Russian Presidential Academy of National Economy and Public Administration"}, {"country": "United Kingdom", "wRank": 1201, "name": "The University of Northampton"}, {"country": "Czechia", "wRank": 1201, "name": "Tomas Bata University in Zlin"}, {"country": "Romania", "wRank": 1201, "name": "Transilvania University of Brasov"}, {"country": "Spain", "wRank": 1201, "name": "UCAM Universidad Católica San Antonio de Murcia"}, {"country": "Italy", "wRank": 1201, "name": "Universita" degli Studi di Urbino Carlo Bo"}, {"country": "Germany", "wRank": 1201, "name": "Universität Siegen"}, {"country": "France", "wRank": 1201, "name": "Université de Caen Normandie"}, {"country": "France", "wRank": 1201, "name": "Université de Limoges"}, {"country": "France", "wRank": 1201, "name": "Université de Poitiers"}, {"country": "France", "wRank": 1201, "name": "Université Jean Moulin Lyon 3"}, {"country": "France", "wRank": 1201, "name": "Université Paris-Nanterre"}, {"country": "France", "wRank": 1201, "name": "Université Paul-Valéry Montpellier 3"}, {"country": "United Kingdom", "wRank": 1201, "name": "University of Derby"}, {"country": "Hungary", "wRank": 1201, "name": "University of Miskolc"}, {"country": "Serbia", "wRank": 1201, "name": "University of Novi Sad"}, {"country": "Czechia", "wRank": 1201, "name": "University of Ostrava"}, {"country": "Hungary", "wRank": 1201, "name": "University of Pannonia"}, {"country": "Czechia", "wRank": 1201, "name": "University of Pardubice"}, {"country": "Slovenia", "wRank": 1201, "name": "University of Primorska"}, {"country": "Croatia", "wRank": 1201, "name": "University of Rijeka"}, {"country": "Bosnia and Herzegovina", "wRank": 1201, "name": "University of Sarajevo"}, {"country": "Poland", "wRank": 1201, "name": "University of Silesia in Katowice"}, {"country": "Croatia", "wRank": 1201, "name": "University of Split"}, {"country": "Russian Federation", "wRank": 1201, "name": "University of Tyumen"}, {"country": "Romania", "wRank": 1201, "name": "University POLITEHNICA of Bucharest"}, {"country": "France", "wRank": 1201, "name": "University Toulouse – Jean Jaurès"}, {"country": "Romania", "wRank": 1201, "name": "West University of Timisoara"}];
+<script>
+/* ================= Config / Helpers ================= */
+const INITIAL_K = 0.67;  // start “zoomed out” like browser 67%
 
-const byCountry = c => QS.filter(d=>d.country===c).sort((a,b)=>a.euRank-b.euRank);
+// Normalize text for searching (case/accents/apostrophes)
+const normalize = s => (s||'')
+  .toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')    // strip accents
+  .replace(/[’‘`´]/g,"'")                              // smart quotes -> '
+  .trim();
+
+// Canonicalize country names to match map labels
+const COUNTRY_CANON = new Map([
+  ['russian federation','russia'],
+  ['czechia','czech republic'],
+  ['bosnia and herzegovina','bosnia & herzegovina'],
+  ['united states','united states of america'],
+  ['usa','united states of america'],
+  ['uk','united kingdom'],
+  ['great britain','united kingdom'],
+  ['north macedonia','n. macedonia'],
+  ['moldova','moldova'],
+  ['georgia','georgia'],
+  ['azerbaijan','azerbaijan'],
+  ['armenia','armenia'],
+  ['turkey','turkey'],
+  ['mexico','mexico'],
+  ['canada','canada']
+]);
+const canon = name => COUNTRY_CANON.get(normalize(name)) || name;
+
+/* Rank helpers */
+const getRank = u => u.wRank ?? u.euRank ?? Infinity;
+const byCountry = c => QS
+  .filter(d => canon(d.country) === canon(c))
+  .sort((a,b) => getRank(a) - getRank(b));
 const tier = r => r<=50?'t1':(r<=200?'t2':'t3');
 
-// -------- Map scaffolding --------
+/* ================= Map scaffolding ================= */
 const svg = d3.select('#map');
-const gRest      = svg.append('g');
-const gCountries = svg.append('g');
-const gLabels    = svg.append('g');
+const gRest      = svg.append('g');  // non-interactive world
+const gCountries = svg.append('g');  // interactive
+const gLabels    = svg.append('g');  // screen-constant labels
 
 let projection, path, LABELS = [];
 let selectedCountry = null, INTERACTIVE = [];
 
-const EUROPE = new Set(["Albania","Andorra","Armenia","Azerbaijan","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Canada","Croatia","Czechia","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","United Kingdom","Vatican","Georgia","Turkey","Russia","Mexico","United States of America"]);
-const NAME_FIX = new Map([["Bosnia and Herz.","Bosnia & Herzegovina"],["Czechia","Czech Republic"],["North Macedonia","N. Macedonia"]]);
+/* Countries we want interactive (Europe + CA/US/MX, Caucasus) */
+const INTERACTIVE_SET = new Set([
+  "Albania","Andorra","Armenia","Azerbaijan","Austria","Belarus","Belgium","Bosnia and Herz.","Bulgaria","Canada",
+  "Croatia","Czechia","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy",
+  "Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands",
+  "North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden",
+  "Switzerland","Ukraine","United Kingdom","Vatican","Georgia","Turkey","Russia","Mexico","United States of America"
+]);
+
+/* Name fixes for the map’s raw names (for labeling) */
+const NAME_FIX = new Map([
+  ["Bosnia and Herz.","Bosnia & Herzegovina"],
+  ["Czechia","Czech Republic"],
+  ["North Macedonia","N. Macedonia"]
+]);
+
+/* Hide tiny/micro labels to reduce clutter */
 const HIDE_LABELS = new Set(["Vatican","Kosovo","Andorra","San Marino","Monaco","Luxembourg","Albania"]);
 
-const measure = (()=>{const c=document.createElement('canvas');const ctx=c.getContext('2d');return (t,px)=>{ctx.font=`700 ${px}px ui-sans-serif, system-ui, Arial`;return ctx.measureText(t).width;};})();
+/* Accurate text measuring for collision layout in the chosen font */
+const measure = (() => {
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  return (text, px) => { ctx.font = `700 ${px}px "Red Hat Display", ui-sans-serif, system-ui, Arial`; return ctx.measureText(text).width; };
+})();
 
+/* Crimea reassignment to Ukraine to avoid provoking users */
 function reassignCrimea(features){
   const uk=features.find(f=>rawName(f)==='Ukraine'); const ru=features.find(f=>rawName(f)==='Russia');
   if(!uk||!ru||ru.geometry.type!=='MultiPolygon') return;
@@ -121,7 +666,7 @@ function reassignCrimea(features){
   uk.geometry.coordinates.push(...move);
 }
 
-// Zoom: allow zooming out to INITIAL_K, up to 9x in
+/* Zoom: keep labels screen-constant */
 const zoom = d3.zoom().scaleExtent([INITIAL_K, 9]).on('zoom', ev => {
   const t = ev.transform, k = t.k;
   gRest.attr('transform', t);
@@ -137,41 +682,68 @@ function render(){
 
   d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(topology=>{
     const world = topojson.feature(topology, topology.objects.countries);
+
+    /* Limit panning to the world’s bounding box */
     const bounds = path.bounds(world);
     zoom.extent([[0,0],[w,h]]).translateExtent(bounds);
     svg.call(zoom);
 
-    const rest = world.features.filter(f => !EUROPE.has(rawName(f)));
-    gRest.selectAll('path.rest').data(rest,d=>rawName(d)).join('path').attr('class','rest').attr('d', path);
+    /* Non-interactive world */
+    const rest = world.features.filter(f => !INTERACTIVE_SET.has(rawName(f)));
+    gRest.selectAll('path.rest')
+      .data(rest, d=>rawName(d))
+      .join('path')
+      .attr('class','rest')
+      .attr('d', path);
 
-    const features = world.features.filter(f => EUROPE.has(rawName(f)));
+    /* Interactive set */
+    const features = world.features.filter(f => INTERACTIVE_SET.has(rawName(f)));
     INTERACTIVE = features;
     reassignCrimea(features);
 
-    gCountries.selectAll('path.country').data(features,d=>rawName(d)).join('path')
-      .attr('class','country').attr('d', path)
+    gCountries.selectAll('path.country')
+      .data(features, d=>rawName(d))
+      .join('path')
+      .attr('class','country')
+      .attr('d', path)
       .on('click', (e,d)=>{ selectedCountry = displayName(d); showCountry(selectedCountry); updateCountryFills(); openPanel(); })
       .on('mouseenter', function(e,d){ if(displayName(d)!==selectedCountry) d3.select(this).attr('fill','var(--hover)'); })
       .on('mouseleave', function(e,d){ d3.select(this).attr('fill', displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)'); })
-      .attr('fill','var(--land)').attr('stroke','var(--border)');
+      .attr('fill','var(--land)')
+      .attr('stroke','var(--border)');
 
+    /* Labels (polylabel for better placement) */
     LABELS = features.map(f=>{
-      const name = displayName(f); if(HIDE_LABELS.has(name)) return null;
+      const name = displayName(f);
+      if (HIDE_LABELS.has(name)) return null;
       const g = f.geometry; let ll;
       try{
         if(g.type==="Polygon") ll = polylabel(g.coordinates,1.0);
-        else if(g.type==="MultiPolygon"){ let best=null,bestA=-Infinity; for(const p of g.coordinates){ const cand=polylabel(p,1.0); const A=ringArea(p[0]); if(A>bestA){bestA=A; best=cand;}} ll=best; }
+        else if(g.type==="MultiPolygon"){
+          let best=null,bestA=-Infinity;
+          for(const p of g.coordinates){
+            const cand=polylabel(p,1.0);
+            const A = ringArea(p[0]);
+            if(A>bestA){bestA=A; best=cand;}
+          }
+          ll=best;
+        }
       }catch(_){ ll = d3.geoCentroid(f); }
-      let [x,y] = projection(ll); if(name==='France'){ x += 80; y -= 56; }
+      let [x,y] = projection(ll);
+      if(name==='France'){ x += 80; y -= 56; }  // manual nudge for readability
       return {name, feature:f, x, y};
     }).filter(Boolean);
 
-    gLabels.selectAll('text.label').data(LABELS,d=>d.name).join('text').attr('class','label').text(d=>d.name);
+    gLabels.selectAll('text.label')
+      .data(LABELS, d=>d.name)
+      .join('text')
+      .attr('class','label')
+      .text(d=>d.name);
 
-    // Initial layout, then apply initial zoom to ~67%
+    /* Layout + initial zoom */
     updateLabels(1, d3.zoomIdentity);
     updateCountryFills();
-    svg.call(zoom.scaleTo, INITIAL_K); // <-- start zoomed out
+    svg.call(zoom.scaleTo, INITIAL_K); // start zoomed out
   });
 }
 
@@ -181,60 +753,81 @@ function updateCountryFills(){
     .attr('fill', d => displayName(d)===selectedCountry ? 'var(--hover)' : 'var(--land)');
 }
 
+/* Name helpers */
 function rawName(f){ return (f.properties && (f.properties.name || f.id)) || 'Unknown'; }
 function displayName(f){ const n = rawName(f); return NAME_FIX.get(n) || n; }
 function ringArea(ring){ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x1,y1]=ring[j],[x2,y2]=ring[i]; a+=(x1*y2-x2*y1);} return Math.abs(a/2); }
 
+/* Screen-constant label engine with simple collision cull */
 function updateLabels(k, t){
-  const basePx = 9, px = Math.max(10, basePx / k), halo = Math.max(1, 3 / k);
+  const basePx = 9;                   // base size
+  const px    = Math.max(10, basePx / k);   // keep at least 10px
+  const halo  = Math.max(1, 3 / k);         // (no stroke used now, but keep for future)
+
   const sel = gLabels.selectAll('text.label')
-    .style('font-size', `${px}px`).style('stroke-width', `${halo}px`)
-    .attr('x', d => t.applyX(d.x)).attr('y', d => t.applyY(d.y)).attr('display', null);
+    .style('font-size', `${px}px`)
+    .style('stroke-width', `${halo}px`)
+    .attr('x', d => t.applyX(d.x))
+    .attr('y', d => t.applyY(d.y))
+    .attr('display', null);
+
   const placed = [];
   sel.each(function(d){
-    const el = this, text = d.name, w = measure(text, px), h = px,
-          x = +el.getAttribute('x') - w/2, y = +el.getAttribute('y') - h/2;
+    const el = this;
+    const text = d.name;
+    const w = measure(text, px);
+    const h = px;
+    const x = +el.getAttribute('x') - w/2;
+    const y = +el.getAttribute('y') - h/2;
     const overlap = placed.some(p => !(x+w < p.x || p.x+p.w < x || y+h < p.y || p.y+p.h < y));
     if(overlap){ el.setAttribute('display','none'); return; }
     placed.push({x,y,w,h});
   });
 }
 
-// -------- Right panel --------
+/* ================= Right Panel ================= */
 function showCountry(country){
   const list = byCountry(country);
   document.getElementById('panelTitle').textContent = country;
   document.getElementById('panelCount').textContent = `${list.length} ${list.length===1?'university':'universities'}`;
   document.getElementById('uniList').innerHTML = list.length ? list.map(u=>`
     <div class="uni">
-      <span class="rank ${tier(u.wRank)}">#${u.wRank} in the world</span>
+      <span class="rank ${tier(getRank(u))}">#${getRank(u)} in the world</span>
       <div class="uni-name">${u.name}</div>
     </div>
   `).join('') : `<div class="muted">No universities listed yet.</div>`;
 }
 
-// ---- Search ----
-const searchEl = document.getElementById('countrySearch');
-searchEl.addEventListener('keydown', e=>{
+/* ================= Search ================= */
+const countrySearch = document.getElementById('countrySearch');
+countrySearch.addEventListener('keydown', e=>{
   if(e.key!=='Enter') return;
-  const q = e.target.value.trim().toLowerCase(); if(!q) return;
+  const q = e.target.value.trim(); if(!q) return;
   const names = INTERACTIVE.map(d => displayName(d));
-  let pick = names.find(n=>n.toLowerCase()===q) || names.find(n=>n.toLowerCase().startsWith(q)) || names.find(n=>n.toLowerCase().includes(q));
+  const qCanon = canon(q);
+  // exact (canon), prefix, includes
+  let pick = names.find(n => normalize(n)===normalize(qCanon))
+         || names.find(n => normalize(n).startsWith(normalize(qCanon)))
+         || names.find(n => normalize(n).includes(normalize(qCanon)));
   if(pick){ selectedCountry=pick; showCountry(pick); updateCountryFills(); openPanel(); }
 });
 
-const uniSearchEl = document.getElementById('uniSearch');
-uniSearchEl.addEventListener('keydown', e=>{
+const uniSearch = document.getElementById('uniSearch');
+uniSearch.addEventListener('keydown', e=>{
   if(e.key!=='Enter') return;
-  const q = e.target.value.trim().toLowerCase(); if(!q) return;
-  let match = QS.find(u=>u.name.toLowerCase()===q) || QS.find(u=>u.name.toLowerCase().startsWith(q)) || QS.find(u=>u.name.toLowerCase().includes(q));
+  const q = normalize(e.target.value); if(!q) return;
+  let match = QS.find(u=>normalize(u.name)===q)
+           ||  QS.find(u=>normalize(u.name).startsWith(q))
+           ||  QS.find(u=>normalize(u.name).includes(q));
   if(match){
-    selectedCountry = match.country; showCountry(match.country); updateCountryFills(); openPanel();
+    selectedCountry = canon(match.country);
+    showCountry(selectedCountry); updateCountryFills(); openPanel();
+    // highlight the card
     requestAnimationFrame(()=>{
       const cards = document.querySelectorAll('#uniList .uni');
       for(const card of cards){
         const nameEl = card.querySelector('.uni-name');
-        if(nameEl && nameEl.textContent.trim().toLowerCase() === match.name.toLowerCase()){
+        if(nameEl && normalize(nameEl.textContent) === normalize(match.name)){
           card.scrollIntoView({behavior:'smooth', block:'center'});
           const original = card.style.backgroundColor;
           card.style.transition = 'background-color .6s ease';
@@ -247,7 +840,7 @@ uniSearchEl.addEventListener('keydown', e=>{
   }
 });
 
-// ---- Panel open/close control ----
+/* ================= Panel open/close ================= */
 const appEl = document.querySelector('.app');
 const toggleBtn = document.getElementById('togglePanel');
 const closeBtn = document.getElementById('closePanelBtn');
@@ -256,10 +849,12 @@ function closePanel(){ appEl.classList.add('closed'); toggleBtn.setAttribute('ar
 toggleBtn.addEventListener('click', openPanel);
 closeBtn.addEventListener('click', closePanel);
 
+/* ================= Boot ================= */
 window.addEventListener('resize', render);
 render();
-showCountry('United Kingdom'); // optional default
-closePanel(); // start map-only
+showCountry('United Kingdom');  // optional default
+closePanel();                   // start map-only
 </script>
 </body>
 </html>
+
